@@ -16,6 +16,7 @@ func BenchmarkManualClone_Address(b *testing.B) {
 	src := *newAddress()
 	cloner := core.NewFuncCloner(cloneAddress)
 	b.ResetTimer()
+	b.ReportAllocs()
 	for b.Loop() {
 		_, _ = doppel.CloneWith(src, cloner)
 	}
@@ -24,6 +25,7 @@ func BenchmarkManualClone_Address(b *testing.B) {
 func BenchmarkShallowCopy_Address(b *testing.B) {
 	src := *newAddress()
 	b.ResetTimer()
+	b.ReportAllocs()
 	for b.Loop() {
 		dst := src
 		_ = dst
@@ -33,6 +35,7 @@ func BenchmarkShallowCopy_Address(b *testing.B) {
 func BenchmarkManualClone_User(b *testing.B) {
 	src := newUser()
 	b.ResetTimer()
+	b.ReportAllocs()
 	for b.Loop() {
 		_, _ = doppel.Clone(src)
 	}
@@ -41,6 +44,7 @@ func BenchmarkManualClone_User(b *testing.B) {
 func BenchmarkShallowCopy_User(b *testing.B) {
 	src := newUser()
 	b.ResetTimer()
+	b.ReportAllocs()
 	for b.Loop() {
 		dst := *src // shallow value copy
 		_ = dst
@@ -50,6 +54,7 @@ func BenchmarkShallowCopy_User(b *testing.B) {
 func BenchmarkManualClone_Order(b *testing.B) {
 	src := newOrder(newUser())
 	b.ResetTimer()
+	b.ReportAllocs()
 	for b.Loop() {
 		_, _ = doppel.Clone(src)
 	}
@@ -58,6 +63,7 @@ func BenchmarkManualClone_Order(b *testing.B) {
 func BenchmarkShallowCopy_Order(b *testing.B) {
 	src := newOrder(newUser())
 	b.ResetTimer()
+	b.ReportAllocs()
 	for b.Loop() {
 		dst := *src
 		_ = dst
@@ -71,6 +77,7 @@ func BenchmarkManualClone_UserLargeSlice(b *testing.B) {
 		src.Tags[idx] = "tag"
 	}
 	b.ResetTimer()
+	b.ReportAllocs()
 	for b.Loop() {
 		_, _ = doppel.Clone(src)
 	}
@@ -83,6 +90,7 @@ func BenchmarkManualClone_UserLargeMap(b *testing.B) {
 		src.Scores[key(idx)] = idx
 	}
 	b.ResetTimer()
+	b.ReportAllocs()
 	for b.Loop() {
 		_, _ = doppel.Clone(src)
 	}

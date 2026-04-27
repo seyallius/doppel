@@ -61,7 +61,7 @@ it comes with real costs:
 | 2        | **External Cloner[T]** (via `CloneWith`) | When clone logic needs injected context        |
 | 3        | **Reflection fallback**                  | Phase 4 — only when neither of the above exist |
 
-In Phase 1, reflection is not present at all. Every copy decision is written explicitly by you, composed from small
+In Phase 1, reflection is not present at all. Every copy decision is written explicitly by you, composed of small
 generic helpers.
 
 ---
@@ -138,7 +138,7 @@ Clone(src T) (T, error)
 ```
 
 `Cloner[T]` is the central extension interface. Any value that can produce an independent deep copy of a `T` satisfies
-it. It is the contract that the registry (Phase 2) and field-level customisation (Phase 3) will build on. For now, you
+it. It is the contract that the registry (Phase 2) and field-level customization (Phase 3) will build on. For now, you
 can create one with `core.NewFuncCloner`:
 
 ```go
@@ -174,7 +174,7 @@ manual.IdentityValue[T](src T) T // for use with CloneSliceOf / CloneMapOf / Clo
 
 For primitive Go types (`bool`, all integer and float types, `string`, `complex64/128`), a direct assignment is already
 a complete deep copy — they carry no pointers. `Identity` and `IdentityValue` are no-op pass-throughs that express this
-intent explicitly rather than relying on implicit behaviour.
+intent explicitly rather than relying on implicit behavior.
 
 ---
 
@@ -199,7 +199,7 @@ cloned, err := doppel.Clone(user) // cloned is *User, independent of user
 func MustClone[T any](src core.SelfClonable[T]) T
 ```
 
-Like `Clone`, but panics on error instead of returning it. Intended for tests and program initialisation where a clone
+Like `Clone`, but panics on error instead of returning it. Intended for tests and program initialization where a clone
 failure is always a programming error.
 
 ```go
@@ -487,7 +487,7 @@ cloned, err := doppel.CloneWith(cfg, configCloner)
 ### Step 6 — Conditional / filtered cloning
 
 Because you supply the clone function, you have full control over what goes into the clone. This is the preview of the
-field-level customisation that Phase 3 will formalise.
+field-level customization that Phase 3 will formalize.
 
 ```go
 // Clone a map, but only carry over entries whose value is above a threshold.
@@ -530,7 +530,7 @@ log.Printf("failed at: %s", cloneErr.Context)
 }
 ```
 
-For program initialisation and tests where a clone failure is always a bug, use `MustClone` / `MustCloneWith` to
+For program initialization and tests where a clone failure is always a bug, use `MustClone` / `MustCloneWith` to
 panic-on-error rather than propagating the error manually.
 
 ---
@@ -581,15 +581,14 @@ and a plain shallow struct copy — the gap is the cost of the allocations you'r
 overhead on top.
 
 ```
-BenchmarkManualClone_Address-8            ~  8 ns/op      16 B/op    1 allocs/op
-BenchmarkShallowCopy_Address-8            ~  1 ns/op       0 B/op    0 allocs/op
-BenchmarkManualClone_User-8               ~ 45 ns/op     320 B/op    5 allocs/op
-BenchmarkShallowCopy_User-8               ~  2 ns/op       0 B/op    0 allocs/op
-BenchmarkManualClone_Order-8              ~ 90 ns/op     560 B/op    9 allocs/op
-BenchmarkCloneSlice_Strings_1000-8        ~ 12 µs/op    8192 B/op    1 allocs/op
-BenchmarkShallowCopy_Strings_1000-8       ~  1 µs/op    8192 B/op    1 allocs/op
-BenchmarkCloneMap_StringInt_500-8         ~ 20 µs/op    5632 B/op    8 allocs/op
-BenchmarkShallowCopy_StringInt_500-8      ~  9 µs/op    4096 B/op    3 allocs/op
+BenchmarkManualClone_Address          	53882752        22.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkShallowCopy_Address          	876615787       1.337 ns/op	       0 B/op	       0 allocs/op
+BenchmarkManualClone_User             	3381873	        381.7 ns/op	     528 B/op	       6 allocs/op
+BenchmarkShallowCopy_User             	440226171	    2.722 ns/op	       0 B/op	       0 allocs/op
+BenchmarkManualClone_Order            	1746865	        683.0 ns/op	    1104 B/op	      11 allocs/op
+BenchmarkShallowCopy_Order            	887047076	    1.336 ns/op	       0 B/op	       0 allocs/op
+BenchmarkManualClone_UserLargeSlice   	250011	         4403 ns/op	   16864 B/op	       6 allocs/op
+BenchmarkManualClone_UserLargeMap     	721894	         1701 ns/op	    1256 B/op	       8 allocs/op
 ```
 
 For slices and maps of primitives, the gap between manual deep copy and shallow copy is entirely the cost of allocating
@@ -598,6 +597,8 @@ independent backing storage — unavoidable for true independence. There is no r
 ---
 
 ## Roadmap
+
+**Summary**
 
 | Phase | Focus                                                          | Status     |
 |-------|----------------------------------------------------------------|------------|
@@ -608,3 +609,66 @@ independent backing storage — unavoidable for true independence. There is no r
 | **5** | Cycle detection — safe cloning of pointer graphs               | 📋 Planned |
 | **6** | Benchmarking suite — cross-strategy comparison                 | 📋 Planned |
 | **7** | API polish — `CloneWithOptions`, JSON-tag filtering, docs      | 📋 Planned |
+
+**Detailed**
+
+# 🚀 PHASE 1 — Manual Deep Copy Foundation (NO reflection)
+
+| **Category**     | **Details**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+|------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Goal**         | Build the core cloning system using explicit/manual cloning only                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **Requirements** | 1. Create a Go module named `doppel`.<br>2. Define core interface: `type Cloner[T any] interface { Clone(src T) (T, error) }`<br>3. Provide built-in manual cloners for: Primitive types, Structs (explicit cloning functions), Slices, Maps, Pointer types.<br>4. DO NOT use reflection anywhere in this phase.<br>5. Design helper functions: `CloneSlice`, `CloneMap`, `ClonePointer`.<br>6. Allow struct-specific clone functions like: `func (u *User) Clone() *User`.<br>7. Ensure: Nil safety, No shared references, Proper allocation.<br>8. Organize code cleanly: `/doppel`, `/core`, `/manual`.<br>9. Add unit tests for: Nested structs, Maps, Slices, Pointer fields.<br>10. Follow clean code practices and proper naming conventions. |
+
+---
+
+# 🚀 PHASE 2 — Cloner Registry (Extensibility Layer)
+
+| **Category**     | **Details**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+|------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Goal**         | Allow users to plug in custom cloning logic                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **Requirements** | 1. Implement registry system: `type Registry struct { typeCloners map[reflect.Type]any }`<br>2. Allow registration: `func (r *Registry) RegisterCloner(t reflect.Type, cloner any)`<br>3. Lookup logic: If custom cloner exists → use it, Otherwise fallback to manual cloning.<br>4. Still DO NOT implement reflection-based cloning yet. Reflection is only allowed for TYPE IDENTIFICATION.<br>5. Support: Per-type cloner override, Thread-safe registry.<br>6. Design API: `doppel.CloneWithRegistry(obj, registry)`<br>7. Add tests: Custom struct cloner override, Ensure override is respected. |
+
+---
+
+# 🚀 PHASE 3 — Field-Level Customization (🔥 this is a hot feature)
+
+| **Category**     | **Details**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+|------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Goal**         | Fine-grained control per field                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **Requirements** | 1. Allow users to define cloners per struct field.<br>2. Design: `type FieldCloner func(value any) (any, error)`<br>3. Extend registry: `RegisterFieldCloner(structType reflect.Type, fieldName string, cloner FieldCloner)`<br>4. Behavior: If field-level cloner exists → use it, Else fallback to type cloner, Else fallback to manual clone.<br>5. Example use case: Clone map only if value satisfies condition.<br>6. Ensure: No reflection-based cloning yet, Reflection ONLY for field discovery.<br>7. Add tests: Conditional cloning, Partial field cloning. |
+
+---
+
+# 🚀 PHASE 4 — Reflection Fallback (Controlled, Not Default)
+
+| **Category**     | **Details**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+|------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Goal**         | Introduce reflection as a fallback only                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **Requirements** | 1. Implement reflection-based deep copy engine.<br>2. This should ONLY be used when: No manual clone exists, No custom cloner exists.<br>3. Support: Structs, Maps, Slices, Pointers, Interfaces (best-effort).<br>4. Handle: Nested objects, Zero values, Unexported fields (skip safely).<br>5. Add configuration: `type Options struct { UseReflectionFallback bool }`<br>6. Default behavior: Reflection fallback is ENABLED but LAST priority.<br>7. Add tests: Complex nested structures, Interface fields. |
+
+---
+
+# 🚀 PHASE 5 — Cycle Detection (Advanced)
+
+| **Category**     | **Details**                                                                                                                                                                                                                                                                                      |
+|------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Goal**         | Prevent infinite recursion                                                                                                                                                                                                                                                                       |
+| **Requirements** | 1. Detect cyclic references using a visited map.<br>2. Track: Pointer addresses, Already cloned objects.<br>3. If cycle detected: Return already cloned instance.<br>4. Ensure: No infinite recursion, Graph integrity maintained.<br>5. Add tests: Self-referencing structs, Mutual references. |
+
+---
+
+# 🚀 PHASE 6 — Performance & Benchmarking
+
+| **Category**     | **Details**                                                                                                                                                                                                                                      |
+|------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Goal**         | Prove your design is legit                                                                                                                                                                                                                       |
+| **Requirements** | 1. Write benchmarks comparing: Manual cloning, Reflection fallback, Custom cloners.<br>2. Optimize: Allocation patterns, Map pre-sizing, Slice copying.<br>3. Avoid unnecessary interface{} conversions.<br>4. Output benchmark results clearly. |
+
+---
+
+# 🚀 PHASE 7 — Developer Experience (Polish)
+
+| **Category**     | **Details**                                                                                                                                                                                                         |
+|------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Goal**         | Make it usable, not just powerful                                                                                                                                                                                   |
+| **Requirements** | 1. Provide clean API: `doppel.Clone(obj)`, `doppel.CloneWithOptions(obj, opts)`, `doppel.NewRegistry()`.<br>2. Add: Documentation, Usage examples, README.<br>3. Ensure: Minimal boilerplate, Clear error messages. |

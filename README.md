@@ -33,6 +33,8 @@ copying decision is visible in code.
     - [Step 4 — Full aggregate with nested structs](#step-4--full-aggregate-with-nested-structs)
     - [Step 5 — External Cloner (no SelfClonable)](#step-5--external-cloner-no-selfclonable)
     - [Step 6 — Conditional / filtered cloning](#step-6--conditional--filtered-cloning)
+    - [Step 7 — Cloner registry (Phase 2)](#step-7--cloner-registry-phase-2)
+    - [Step 8 — Conditional clone via registry](#step-8--conditional-clone-via-registry)
 - [Error Handling](#error-handling)
 - [Nil Safety Contract](#nil-safety-contract)
 - [Running Tests](#running-tests)
@@ -102,27 +104,34 @@ Requires **Go 1.26.2** or later (for range-over-integer and generic type inferen
 github.com/seyallius/doppel/
 │
 ├── doppel.go          Public API entry points
-│                      Clone, MustClone, CloneWith, MustCloneWith
+│                      Clone, MustClone, CloneWith, MustCloneWith,
+│                      CloneWithRegistry
 │
 ├── core/
 │   ├── cloner.go      Cloner[T] interface, FuncCloner[T] adapter,
 │   │                  SelfClonable[T] interface
 │   └── errors.go      CloneError, WrapError, ErrNilSource
 │
-└── manual/
-    ├── primitives.go  Identity[T], IdentityValue[T]
-    ├── slice.go       CloneSlice[T], CloneSliceOf[T]
-    ├── map.go         CloneMap[K,V], CloneMapOf[K,V]
-    └── pointer.go     ClonePointer[T], ClonePointerOf[T]
+├── manual/
+│   ├── primitives.go  Identity[T], IdentityValue[T]
+│   ├── slice.go       CloneSlice[T], CloneSliceOf[T]
+│   ├── map.go         CloneMap[K,V], CloneMapOf[K,V]
+│   └── pointer.go     ClonePointer[T], ClonePointerOf[T]
+│
+└── registry/          ← Phase 2
+    └── registry.go    Registry, New, Register[T], Lookup[T],
+                       Deregister[T], Has[T], ErrNoCloner
 ```
 
 **Dependency graph** (acyclic, no circular imports):
 
 ```
-doppel  ──imports──▶  core
-doppel  ──imports──▶  manual
-manual  ──imports──▶  core
-core    ──imports──▶  (stdlib only)
+doppel    ──imports──▶  core
+doppel    ──imports──▶  manual
+doppel    ──imports──▶  registry
+manual    ──imports──▶  core
+registry  ──imports──▶  core
+core      ──imports──▶  (stdlib only)
 ```
 
 ---
@@ -133,7 +142,7 @@ core    ──imports──▶  (stdlib only)
 
 ```go
 type Cloner[T any] interface {
-Clone(src T) (T, error)
+    Clone(src T) (T, error)
 }
 ```
 
@@ -142,8 +151,8 @@ it. It is the contract that the registry (Phase 2) and field-level customization
 can create one with `core.NewFuncCloner`:
 
 ```go
-addressCloner := core.NewFuncCloner(func (src Address) (Address, error) {
-return Address{Street: src.Street, City: src.City}, nil
+addressCloner := core.NewFuncCloner(func(src Address) (Address, error) {
+    return Address{Street: src.Street, City: src.City}, nil
 })
 ```
 
@@ -151,7 +160,7 @@ return Address{Street: src.Street, City: src.City}, nil
 
 ```go
 type SelfClonable[T any] interface {
-Clone() (T, error)
+    Clone() (T, error)
 }
 ```
 
@@ -168,8 +177,8 @@ itself.
 ### Identity helpers
 
 ```go
-manual.Identity[T](src T) (T, error) // for use with CloneSlice / CloneMap / ClonePointer
-manual.IdentityValue[T](src T) T // for use with CloneSliceOf / CloneMapOf / ClonePointerOf
+manual.Identity[T](src T) (T, error)   // for use with CloneSlice / CloneMap / ClonePointer
+manual.IdentityValue[T](src T) T        // for use with CloneSliceOf / CloneMapOf / ClonePointerOf
 ```
 
 For primitive Go types (`bool`, all integer and float types, `string`, `complex64/128`), a direct assignment is already
@@ -190,7 +199,7 @@ Produces a deep copy of `src` by calling `src.Clone()`. The compiler enforces th
 
 ```go
 user := &User{ID: 1, Name: "Alice"}
-cloned, err := doppel.Clone(user) // cloned is *User, independent of user
+cloned, err := doppel.Clone(user)  // cloned is *User, independent of user
 ```
 
 ### doppel.MustClone
@@ -230,14 +239,99 @@ Like `CloneWith`, but panics on error.
 
 ---
 
+### doppel.CloneWithRegistry
+
+```go
+func CloneWithRegistry[T any](src T, reg *registry.Registry) (T, error)
+```
+
+Produces a deep copy of `src` by walking the following priority chain:
+
+1. **Registered `Cloner[T]`** — if `reg` contains a cloner for type T, it is called. This is the fastest path.
+2. **`core.SelfClonable[T]` fallback** — if T implements `SelfClonable[T]`, its `Clone()` method is called. All existing `SelfClonable` types work without registration.
+3. **`registry.ErrNoCloner`** — returned when neither strategy is available.
+
+Reflection is used only inside the registry for type key derivation — never for field access or value copying.
+
+```go
+reg := registry.New()
+registry.Register(reg, core.NewFuncCloner(cloneAddress))
+
+cloned, err := doppel.CloneWithRegistry(addr, reg)
+```
+
+---
+
+### registry.New
+
+```go
+func New() *Registry
+```
+
+Creates an empty, thread-safe Registry ready for use.
+
+---
+
+### registry.Register
+
+```go
+func Register[T any](r *Registry, cloner core.Cloner[T])
+```
+
+Stores `cloner` as the `Cloner[T]` for type `T`. Calling `Register` a second time for the same type silently replaces the first registration. Thread-safe.
+
+Note: `Register` is a package-level generic function rather than a method because Go does not support type parameters on methods.
+
+---
+
+### registry.Lookup
+
+```go
+func Lookup[T any](r *Registry) (core.Cloner[T], bool)
+```
+
+Returns the registered `Cloner[T]` for type `T` and `true` if found; `nil` and `false` otherwise. Thread-safe.
+
+---
+
+### registry.Deregister
+
+```go
+func Deregister[T any](r *Registry)
+```
+
+Removes the cloner for type `T`. Calling `Deregister` on an unregistered type is a no-op. Thread-safe.
+
+---
+
+### registry.Has
+
+```go
+func Has[T any](r *Registry) bool
+```
+
+Reports whether a cloner is registered for type `T`. Thread-safe.
+
+---
+
+### core.ErrNoCloner
+
+```go
+var ErrNoCloner = errors.New("doppel/registry: no cloner registered and type does not implement SelfClonable")
+```
+
+Sentinel error returned by `CloneWithRegistry` when neither a registered `Cloner[T]` nor a `SelfClonable[T]` implementation is found. Use `errors.Is` to check for it.
+
+---
+
 ### manual.CloneSlice / CloneSliceOf
 
 ```go
 // Fallible element cloner — use when cloneElem can return an error.
-func CloneSlice[T any](src []T, cloneElem func (T) (T, error)) ([]T, error)
+func CloneSlice[T any](src []T, cloneElem func(T) (T, error)) ([]T, error)
 
 // Infallible element cloner — use for primitive element types.
-func CloneSliceOf[T any](src []T, cloneElem func (T) T) []T
+func CloneSliceOf[T any](src []T, cloneElem func(T) T) []T
 ```
 
 `CloneSlice` creates an independent copy of `src`. `cloneElem` is called for every element. On error, a contextual
@@ -262,10 +356,10 @@ tags := manual.CloneSliceOf(u.Tags, manual.IdentityValue[string])
 
 ```go
 // Fallible value cloner.
-func CloneMap[K comparable, V any](src map[K]V, cloneVal func (V) (V, error)) (map[K]V, error)
+func CloneMap[K comparable, V any](src map[K]V, cloneVal func(V) (V, error)) (map[K]V, error)
 
 // Infallible value cloner.
-func CloneMapOf[K comparable, V any](src map[K]V, cloneVal func (V) V) map[K]V
+func CloneMapOf[K comparable, V any](src map[K]V, cloneVal func(V) V) map[K]V
 ```
 
 `CloneMap` creates an independent copy of `src`. Map keys are comparable value types in Go and do not require a clone
@@ -279,11 +373,11 @@ scores, err := manual.CloneMap(u.Scores, manual.Identity[int])
 records, err := manual.CloneMap(store, cloneRecord)
 
 // Conditional clone — only include values passing a predicate
-active, err := manual.CloneMap(allUsers, func (u User) (User, error) {
-if !u.Active {
-return User{}, nil // zero-out inactive users
-}
-return u.Clone() // or however User is cloned
+active, err := manual.CloneMap(allUsers, func(u User) (User, error) {
+    if !u.Active {
+        return User{}, nil // zero-out inactive users
+    }
+    return u.Clone() // or however User is cloned
 })
 ```
 
@@ -295,10 +389,10 @@ return u.Clone() // or however User is cloned
 
 ```go
 // Fallible value cloner.
-func ClonePointer[T any](src *T, cloneVal func (T) (T, error)) (*T, error)
+func ClonePointer[T any](src *T, cloneVal func(T) (T, error)) (*T, error)
 
 // Infallible value cloner.
-func ClonePointerOf[T any](src *T, cloneVal func (T) T) *T
+func ClonePointerOf[T any](src *T, cloneVal func(T) T) *T
 ```
 
 `ClonePointer` allocates a new `*T` and fills it with the result of `cloneVal(*src)`. The original and the clone never
@@ -326,19 +420,19 @@ share.
 
 ```go
 type Address struct {
-Street string
-City   string
-State  string
-Zip    string
+    Street string
+    City   string
+    State  string
+    Zip    string
 }
 
 func (a Address) Clone() (Address, error) {
-return Address{
-Street: a.Street,
-City:   a.City,
-State:  a.State,
-Zip:    a.Zip,
-}, nil
+    return Address{
+        Street: a.Street,
+        City:   a.City,
+        State:  a.State,
+        Zip:    a.Zip,
+    }, nil
 }
 ```
 
@@ -346,7 +440,7 @@ Or, as a stand-alone function (useful when you want to pass it to `ClonePointer`
 
 ```go
 func cloneAddress(src Address) (Address, error) {
-return Address{Street: src.Street, City: src.City, State: src.State, Zip: src.Zip}, nil
+    return Address{Street: src.Street, City: src.City, State: src.State, Zip: src.Zip}, nil
 }
 ```
 
@@ -358,21 +452,21 @@ Use `manual.ClonePointer` to allocate a new pointer and clone the pointed-to val
 
 ```go
 type ContactInfo struct {
-Email   string
-Phone   string
-Address *Address
+    Email   string
+    Phone   string
+    Address *Address
 }
 
 func cloneContactInfo(src ContactInfo) (ContactInfo, error) {
-clonedAddr, err := manual.ClonePointer(src.Address, cloneAddress)
-if err != nil {
-return ContactInfo{}, core.WrapError("ContactInfo.Address", err)
-}
-return ContactInfo{
-Email:   src.Email,
-Phone:   src.Phone,
-Address: clonedAddr,
-}, nil
+    clonedAddr, err := manual.ClonePointer(src.Address, cloneAddress)
+    if err != nil {
+        return ContactInfo{}, core.WrapError("ContactInfo.Address", err)
+    }
+    return ContactInfo{
+        Email:   src.Email,
+        Phone:   src.Phone,
+        Address: clonedAddr,
+    }, nil
 }
 ```
 
@@ -384,25 +478,25 @@ Use `manual.CloneSlice` and `manual.CloneMap`. For primitive element/value types
 
 ```go
 type Profile struct {
-Tags   []string
-Scores map[string]int
-Badges []string
+    Tags   []string
+    Scores map[string]int
+    Badges []string
 }
 
 func (p Profile) Clone() (Profile, error) {
-tags, err := manual.CloneSlice(p.Tags, manual.Identity[string])
-if err != nil {
-return Profile{}, core.WrapError("Profile.Tags", err)
-}
+    tags, err := manual.CloneSlice(p.Tags, manual.Identity[string])
+    if err != nil {
+        return Profile{}, core.WrapError("Profile.Tags", err)
+    }
 
-scores, err := manual.CloneMap(p.Scores, manual.Identity[int])
-if err != nil {
-return Profile{}, core.WrapError("Profile.Scores", err)
-}
+    scores, err := manual.CloneMap(p.Scores, manual.Identity[int])
+    if err != nil {
+        return Profile{}, core.WrapError("Profile.Scores", err)
+    }
 
-badges := manual.CloneSliceOf(p.Badges, manual.IdentityValue[string]) // infallible shorthand
+    badges := manual.CloneSliceOf(p.Badges, manual.IdentityValue[string]) // infallible shorthand
 
-return Profile{Tags: tags, Scores: scores, Badges: badges}, nil
+    return Profile{Tags: tags, Scores: scores, Badges: badges}, nil
 }
 ```
 
@@ -414,42 +508,42 @@ Everything composes. Each layer calls the clone function of the layer below it.
 
 ```go
 type User struct {
-ID      int64
-Name    string
-Active  bool
-Contact ContactInfo
-Tags    []string
-Scores  map[string]int
+    ID      int64
+    Name    string
+    Active  bool
+    Contact ContactInfo
+    Tags    []string
+    Scores  map[string]int
 }
 
 func (u *User) Clone() (*User, error) {
-if u == nil {
-return nil, nil
-}
+    if u == nil {
+        return nil, nil
+    }
 
-contact, err := cloneContactInfo(u.Contact)
-if err != nil {
-return nil, core.WrapError("User.Contact", err)
-}
+    contact, err := cloneContactInfo(u.Contact)
+    if err != nil {
+        return nil, core.WrapError("User.Contact", err)
+    }
 
-tags, err := manual.CloneSlice(u.Tags, manual.Identity[string])
-if err != nil {
-return nil, core.WrapError("User.Tags", err)
-}
+    tags, err := manual.CloneSlice(u.Tags, manual.Identity[string])
+    if err != nil {
+        return nil, core.WrapError("User.Tags", err)
+    }
 
-scores, err := manual.CloneMap(u.Scores, manual.Identity[int])
-if err != nil {
-return nil, core.WrapError("User.Scores", err)
-}
+    scores, err := manual.CloneMap(u.Scores, manual.Identity[int])
+    if err != nil {
+        return nil, core.WrapError("User.Scores", err)
+    }
 
-return &User{
-ID:      u.ID,
-Name:    u.Name,
-Active:  u.Active,
-Contact: contact,
-Tags:    tags,
-Scores:  scores,
-}, nil
+    return &User{
+        ID:      u.ID,
+        Name:    u.Name,
+        Active:  u.Active,
+        Contact: contact,
+        Tags:    tags,
+        Scores:  scores,
+    }, nil
 }
 
 // At the call site:
@@ -466,17 +560,17 @@ When a type does not implement `SelfClonable` — for example, a third-party str
 ```go
 // ThirdPartyConfig is a type you don't own.
 type ThirdPartyConfig struct {
-Host    string
-Port    int
-Options map[string]string
+    Host    string
+    Port    int
+    Options map[string]string
 }
 
-configCloner := core.NewFuncCloner(func (src ThirdPartyConfig) (ThirdPartyConfig, error) {
-opts, err := manual.CloneMap(src.Options, manual.Identity[string])
-if err != nil {
-return ThirdPartyConfig{}, core.WrapError("ThirdPartyConfig.Options", err)
-}
-return ThirdPartyConfig{Host: src.Host, Port: src.Port, Options: opts}, nil
+configCloner := core.NewFuncCloner(func(src ThirdPartyConfig) (ThirdPartyConfig, error) {
+    opts, err := manual.CloneMap(src.Options, manual.Identity[string])
+    if err != nil {
+        return ThirdPartyConfig{}, core.WrapError("ThirdPartyConfig.Options", err)
+    }
+    return ThirdPartyConfig{Host: src.Host, Port: src.Port, Options: opts}, nil
 })
 
 cloned, err := doppel.CloneWith(cfg, configCloner)
@@ -492,18 +586,18 @@ field-level customization that Phase 3 will formalize.
 ```go
 // Clone a map, but only carry over entries whose value is above a threshold.
 aboveThreshold, err := manual.CloneMap(rawScores, func(score int) (int, error) {
-if score < passingGrade {
-return 0, nil // zero-out failing scores
-}
-return score, nil
+    if score < passingGrade {
+        return 0, nil // zero-out failing scores
+    }
+    return score, nil
 })
 
 // Clone a slice, skipping nil pointers entirely.
-validUsers, err := manual.CloneSlice(allUsers, func (u *User) (*User, error) {
-if u == nil {
-return nil, nil // preserved as nil in clone
-}
-return u.Clone()
+validUsers, err := manual.CloneSlice(allUsers, func(u *User) (*User, error) {
+    if u == nil {
+        return nil, nil // preserved as nil in clone
+    }
+    return u.Clone()
 })
 ```
 
@@ -523,10 +617,10 @@ Errors implement `Unwrap()`, so `errors.Is` and `errors.As` work correctly throu
 ```go
 cloned, err := doppel.Clone(order)
 if err != nil {
-var cloneErr *core.CloneError
-if errors.As(err, &cloneErr) {
-log.Printf("failed at: %s", cloneErr.Context)
-}
+    var cloneErr *core.CloneError
+    if errors.As(err, &cloneErr) {
+        log.Printf("failed at: %s", cloneErr.Context)
+    }
 }
 ```
 
@@ -581,14 +675,31 @@ and a plain shallow struct copy — the gap is the cost of the allocations you'r
 overhead on top.
 
 ```
-BenchmarkManualClone_Address          	53882752        22.81 ns/op	       0 B/op	       0 allocs/op
-BenchmarkShallowCopy_Address          	876615787       1.337 ns/op	       0 B/op	       0 allocs/op
-BenchmarkManualClone_User             	3381873	        381.7 ns/op	     528 B/op	       6 allocs/op
-BenchmarkShallowCopy_User             	440226171	    2.722 ns/op	       0 B/op	       0 allocs/op
-BenchmarkManualClone_Order            	1746865	        683.0 ns/op	    1104 B/op	      11 allocs/op
-BenchmarkShallowCopy_Order            	887047076	    1.336 ns/op	       0 B/op	       0 allocs/op
-BenchmarkManualClone_UserLargeSlice   	250011	         4403 ns/op	   16864 B/op	       6 allocs/op
-BenchmarkManualClone_UserLargeMap     	721894	         1701 ns/op	    1256 B/op	       8 allocs/op
+
+// Manual deep copy (Integration)
+BenchmarkManualClone_Address            53882752        22.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkManualClone_User               3381873	        381.7 ns/op	     528 B/op	       6 allocs/op
+BenchmarkManualClone_Order              1746865	        683.0 ns/op	    1104 B/op	      11 allocs/op
+BenchmarkManualClone_UserLargeSlice     250011	         4403 ns/op	   16864 B/op	       6 allocs/op
+BenchmarkManualClone_UserLargeMap       721894	         1701 ns/op	    1256 B/op	       8 allocs/op
+
+// Manual shallow copy (Integration)
+BenchmarkShallowCopy_Address            876615787       1.337 ns/op	       0 B/op	       0 allocs/op
+BenchmarkShallowCopy_User               440226171	    2.722 ns/op	       0 B/op	       0 allocs/op
+BenchmarkShallowCopy_Order              887047076	    1.336 ns/op	       0 B/op	       0 allocs/op
+
+// Registry (Integration)
+BenchmarkManualClone_Address            53882752        22.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkManualClone_User               3381873	        381.7 ns/op	     528 B/op	       6 allocs/op
+BenchmarkManualClone_Order              1746865	        683.0 ns/op	    1104 B/op	      11 allocs/op
+BenchmarkManualClone_UserLargeSlice     250011	         4403 ns/op	   16864 B/op	       6 allocs/op
+BenchmarkManualClone_UserLargeMap       721894	         1701 ns/op	    1256 B/op	       8 allocs/op
+
+// Registry
+BenchmarkRegistry_Register              6840673	        173.7 ns/op	     368 B/op	       3 allocs/op
+BenchmarkRegistry_Lookup_Hit            32958560        36.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRegistry_Lookup_Miss           51553134        23.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRegistry_Has                   39558565        30.41 ns/op	       0 B/op	       0 allocs/op
 ```
 
 For slices and maps of primitives, the gap between manual deep copy and shallow copy is entirely the cost of allocating

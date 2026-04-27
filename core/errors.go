@@ -5,6 +5,7 @@
 //   - CloneError: carries Context (field path) and Cause (underlying error) for precise diagnostics.
 //   - WrapError: convenience constructor that builds CloneError with a human-readable context string.
 //   - ErrNilSource: sentinel error reserved for future strict-nil modes (not used by default).
+//   - ErrNoCloner: sentinel error returned by `CloneWithRegistry` when neither a registered `Cloner[T]` nor a `SelfClonable[T]` implementation is found.
 //
 // All errors implement CloneError.Unwrap() for compatibility with errors.Is/errors.As,
 // enabling robust error handling in nested clone operations without losing the root cause.
@@ -17,11 +18,18 @@ import (
 
 // -------------------------------------------- Types, Variables & Constants --------------------------------------------
 
-// ErrNilSource is returned by ClonePointer when the source pointer is nil
-// and the caller has opted in to strict nil-rejection mode.
-// By default, ClonePointer propagates nil as nil (no error); this sentinel
-// is reserved for future optional strict mode.
-var ErrNilSource = errors.New("doppel: clone source is nil")
+var (
+	// ErrNilSource is returned by ClonePointer when the source pointer is nil
+	// and the caller has opted in to strict nil-rejection mode.
+	// By default, ClonePointer propagates nil as nil (no error); this sentinel
+	// is reserved for future optional strict mode.
+	ErrNilSource = errors.New("doppel: clone source is nil")
+
+	// ErrNoCloner is returned by doppel.CloneWithRegistry when neither a registered
+	// Cloner[T] nor a core.SelfClonable[T] implementation is found for type T.
+	// Use errors.Is to check for this sentinel in calling code.
+	ErrNoCloner = errors.New("doppel/registry: no cloner registered and type does not implement SelfClonable")
+)
 
 // CloneError carries contextual path information about a cloning failure,
 // making it straightforward to identify which field or index triggered the error.

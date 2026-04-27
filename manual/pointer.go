@@ -1,3 +1,20 @@
+// Package manual. pointer - provides ClonePointer[T] and ClonePointerOf[T] — generic helpers
+// for creating independent deep copies of pointer values, allocating fresh memory for the clone.
+//
+// Key behaviors:
+//   - Nil-safety: nil src → (nil, nil) without invoking the clone function.
+//   - Independence: cloned pointer points to newly allocated memory; original and clone never share addresses.
+//   - Error propagation: ClonePointer wraps cloneVal errors with core.WrapError for contextual debugging.
+//
+// Choose ClonePointer when cloning the pointed-to value can fail (e.g., nested struct with validation).
+// Choose ClonePointerOf for primitive types or infallible copy logic using IdentityValue[T].
+//
+// Typical usage inside a struct's Clone() method:
+//
+//	addr, err := manual.ClonePointer(u.Address, cloneAddress)
+//	if err != nil {
+//	    return nil, core.WrapError("User.Address", err)
+//	}
 package manual
 
 import "github.com/seyallius/doppel/core"

@@ -1,3 +1,17 @@
+// Package manual. map - provides CloneMap[K,V] and CloneMapOf[K,V] — generic helpers
+// for creating independent deep copies of maps, cloning values while preserving comparable keys.
+//
+// Key behaviors:
+//   - Nil-safety: nil src → (nil, nil); empty non-nil src → fresh empty map (preserves nil/empty distinction).
+//   - Independence: cloned map is a new map[K]V; mutations to src never affect the clone.
+//   - Key handling: keys are comparable value types in Go and copied automatically; only values are cloned.
+//   - Error context: on failure, CloneMap returns an error annotated with the failing key.
+//
+// Choose CloneMap when value cloning can fail (e.g., nested structs).
+// Choose CloneMapOf for primitive value types or infallible copy logic using IdentityValue[V].
+//
+// Design note: If you need to transform keys during cloning, use a manual for-range loop —
+// this keeps the helper focused and avoids over-engineering the common case.
 package manual
 
 import "fmt"

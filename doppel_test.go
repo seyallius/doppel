@@ -1,6 +1,3 @@
-// Package doppel_test. doppel_test - Exercises the full manual cloning stack
-// via realistic domain types that demonstrate how CloneSlice, CloneMap, and ClonePointer
-// compose inside a struct's own Clone() method.
 package doppel_test
 
 import (

@@ -1,3 +1,16 @@
+// Package manual. slice - provides CloneSlice[T] and CloneSliceOf[T] — generic helpers
+// for creating independent deep copies of slices with fallible or infallible element cloners.
+//
+// Key behaviors:
+//   - Nil-safety: nil src → (nil, nil); empty non-nil src → fresh empty slice (preserves nil/empty distinction).
+//   - Independence: cloned slice has its own backing array; mutations to src never affect the clone.
+//   - Error context: on failure, CloneSlice returns an error annotated with the failing index.
+//
+// Choose CloneSlice when element cloning can fail (e.g., nested structs with validation).
+// Choose CloneSliceOf for primitive types or infallible copy logic using IdentityValue[T].
+//
+// Performance note: These helpers allocate exactly one new slice header + backing array —
+// no reflection overhead, no hidden allocations beyond what the element cloner requires.
 package manual
 
 import "fmt"

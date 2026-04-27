@@ -1,8 +1,17 @@
+// Package core. errors - provides contextual error types (CloneError) and helpers (WrapError)
+// that annotate cloning failures with field-path information for easier debugging.
+//
+// Key exports:
+//   - CloneError: carries Context (field path) and Cause (underlying error) for precise diagnostics.
+//   - WrapError: convenience constructor that builds CloneError with a human-readable context string.
+//   - ErrNilSource: sentinel error reserved for future strict-nil modes (not used by default).
+//
+// All errors implement CloneError.Unwrap() for compatibility with errors.Is/errors.As,
+// enabling robust error handling in nested clone operations without losing the root cause.
 package core
 
 import (
 	"errors"
-
 	"fmt"
 )
 

@@ -1,5 +1,10 @@
-// Package core. cloner - Defines the foundational interfaces and error types for doppel.
-// It has zero dependencies on any other doppel sub-package and no use of reflect.
+// Package core. cloner - defines the foundational cloning interfaces (Cloner[T], SelfClonable[T])
+// and the FuncCloner adapter for registering custom clone logic without reflection.
+//
+// This file establishes the extension contract for doppel:
+//   - Cloner[T]: external clone logic for types you don't own or need context for.
+//   - SelfClonable[T]: opt-in interface for types that manage their own deep-copy logic.
+//   - FuncCloner[T]: lightweight adapter to use plain functions as Cloner[T] implementations.
 package core
 
 // -------------------------------------------- Types --------------------------------------------

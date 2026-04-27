@@ -1,8 +1,18 @@
-// Package manual provides generic helper functions for manual (reflection-free)
-// deep copying of slices, maps, and pointers.
+// Package manual. primitives - provides Identity[T] and IdentityValue[T] — no-op helpers
+// that express "this primitive type needs no deep copy" explicitly in clone pipelines.
 //
-// Usage pattern — compose helpers inside a type's own Clone() method:
+// Why these exist:
+//   - For primitive Go types (bool, int, string, float, etc.), assignment IS a deep copy.
+//   - These helpers make that intent explicit rather than relying on implicit behavior.
+//   - Identity[T] returns (T, error) for use with fallible helpers (CloneSlice, CloneMap, ClonePointer).
+//   - IdentityValue[T] returns T for use with infallible helpers (CloneSliceOf, CloneMapOf, ClonePointerOf).
 //
+// Usage example:
+//
+//	tags, err := manual.CloneSlice(user.Tags, manual.Identity[string])
+//	scores := manual.CloneSliceOf(user.Scores, manual.IdentityValue[int])
+//
+//	// compose helpers inside a type's own Clone() method:
 //	func (u *User) Clone() (*User, error) {
 //	    tags, err := manual.CloneSlice(u.Tags, manual.Identity[string])
 //	    ...

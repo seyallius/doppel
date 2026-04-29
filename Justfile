@@ -7,18 +7,22 @@ default:
 # Development
 # ----------------------------------------------------------------
 
+# Recursively analyze directory tree structure with file filtering, tree view, colors, and verbose stats output
 [group('Development')]
 treeclip dir="":
     treeclip run {{ dir }} -f -t -c -v --stats
 
+# Compile the Go application into an executable binary at ./bin/doppel
 [group('Development')]
 build:
     go build -o ./bin/doppel ./...
 
+# Run all Go tests with verbose output to show each test's progress and results
 [group('Development')]
 test:
     go test -v ./...
 
+# Generate a coverage profile and open an HTML visualization showing which code lines are tested
 [group('Development')]
 test-coverage:
     go test -coverprofile=coverage.out ./...
@@ -28,22 +32,27 @@ test-coverage:
 # Code Quality
 # ----------------------------------------------------------------
 
+# Run golangci-lint to identify potential bugs, style issues, and performance problems in the codebase
 [group('Code Quality')]
 lint:
     golangci-lint run
 
+# Automatically format all Go source files according to standard Go formatting rules (gofmt style)
 [group('Code Quality')]
 fmt:
     go fmt ./...
 
+# Analyze Go source code for suspicious constructs, unreachable code, and other potential errors
 [group('Code Quality')]
 vet:
     go vet ./...
 
+# Run advanced static analysis tool that catches bugs, simplifies code, and enforces best practices
 [group('Code Quality')]
 staticcheck:
     staticcheck ./...
 
+# Run all code quality checks sequentially: formatting, vetting, linting, and static analysis
 [group('Code Quality')]
 all-checks: fmt vet lint staticcheck
 
@@ -51,23 +60,28 @@ all-checks: fmt vet lint staticcheck
 # Dependency
 # ----------------------------------------------------------------
 
+# Download all required Go module dependencies to the local module cache
 [group('Dependency')]
 mod-download:
     go mod download
 
+# Clean up go.mod and go.sum by removing unused dependencies and adding missing ones
 [group('Dependency')]
 mod-tidy:
     go mod tidy
 
+# Copy all module dependencies into a local vendor directory for offline builds
 [group('Dependency')]
 mod-vendor:
     go mod vendor
 
+# Remove the vendor directory and clear the entire Go module cache to force fresh downloads
 [group('Dependency')]
 mod-clean:
     rm -rf ./vendor
     go clean -modcache
 
+# Update all direct and indirect module dependencies to their latest minor/patch versions
 [group('Dependency')]
 mod-update:
     go get -u ./...
@@ -77,22 +91,32 @@ mod-update:
 # Git & Version Control
 # ----------------------------------------------------------------
 
+# Stage all current changes and add them to the most recent commit, editing the commit message
 [group('Git')]
 amend:
     git commit -a --amend
 
+# Create a new commit with no file changes, useful for triggering CI or adding metadata
 [group('Git')]
 empty:
     git commit --allow-empty
 
+# Interactively rebase the last N commits to edit, squash, reorder, or drop them
 [group('Git')]
 rebase n="3":
     git rebase -i HEAD~{{ n }}
 
+# Copy the current unstaged/staged diff to the system clipboard for sharing or documentation
 [group('Git')]
 diff-cp:
     git diff | xclip -selection clipboard
 
+# Show all (onelined) commit titles made since midnight for daily standup or activity tracking
 [group('Git')]
 today:
-    git log --since="today 00:00:00" --until="today 23:59:59" --oneline
+    git log --since="today 00:00:00" --until="today 23:59:59" --oneline | xclip -selection clipboard
+
+# Show all (detailed) commit titles made since midnight for daily standup or activity tracking
+[group('Git')]
+today-all:
+    git log --since="today 00:00:00" --until="today 23:59:59" | xclip -selection clipboard

@@ -1,0 +1,113 @@
+?   	github.com/seyallius/doppel	[no test files]
+?   	github.com/seyallius/doppel/core	[no test files]
+goos: linux
+goarch: amd64
+pkg: github.com/seyallius/doppel/doppel_test
+cpu: 11th Gen Intel(R) Core(TM) i5-11400H @ 2.70GHz
+BenchmarkDoppelVsReflect_Score/Doppel-12      	46361898	        24.02 ns/op	      24 B/op	       1 allocs/op
+BenchmarkDoppelVsReflect_Score/Doppel-12      	54381801	        21.94 ns/op	      24 B/op	       1 allocs/op
+BenchmarkDoppelVsReflect_Score/Doppel-12      	54336200	        21.81 ns/op	      24 B/op	       1 allocs/op
+BenchmarkDoppelVsReflect_Score/Doppel-12      	56790796	        21.65 ns/op	      24 B/op	       1 allocs/op
+BenchmarkDoppelVsReflect_Score/Doppel-12      	54750981	        23.86 ns/op	      24 B/op	       1 allocs/op
+BenchmarkDoppelVsReflect_Score/Doppel-12      	56838728	        22.03 ns/op	      24 B/op	       1 allocs/op
+BenchmarkDoppelVsReflect_Score/Doppel-12      	52859226	        22.03 ns/op	      24 B/op	       1 allocs/op
+BenchmarkDoppelVsReflect_Score/Doppel-12      	54369043	        23.38 ns/op	      24 B/op	       1 allocs/op
+BenchmarkDoppelVsReflect_Score/Doppel-12      	51191804	        22.23 ns/op	      24 B/op	       1 allocs/op
+BenchmarkDoppelVsReflect_Score/Doppel-12      	53291043	        21.68 ns/op	      24 B/op	       1 allocs/op
+BenchmarkDoppelVsReflect_Score/Reflect-12     	 9271161	       127.3 ns/op	      96 B/op	       4 allocs/op
+BenchmarkDoppelVsReflect_Score/Reflect-12     	 9469614	       131.5 ns/op	      96 B/op	       4 allocs/op
+BenchmarkDoppelVsReflect_Score/Reflect-12     	 9375373	       131.8 ns/op	      96 B/op	       4 allocs/op
+BenchmarkDoppelVsReflect_Score/Reflect-12     	 9374292	       131.7 ns/op	      96 B/op	       4 allocs/op
+BenchmarkDoppelVsReflect_Score/Reflect-12     	 9204664	       135.0 ns/op	      96 B/op	       4 allocs/op
+BenchmarkDoppelVsReflect_Score/Reflect-12     	 8287987	       137.7 ns/op	      96 B/op	       4 allocs/op
+BenchmarkDoppelVsReflect_Score/Reflect-12     	 9454276	       134.5 ns/op	      96 B/op	       4 allocs/op
+BenchmarkDoppelVsReflect_Score/Reflect-12     	 9031574	       136.3 ns/op	      96 B/op	       4 allocs/op
+BenchmarkDoppelVsReflect_Score/Reflect-12     	 8909732	       131.2 ns/op	      96 B/op	       4 allocs/op
+BenchmarkDoppelVsReflect_Score/Reflect-12     	 9425722	       128.6 ns/op	      96 B/op	       4 allocs/op
+BenchmarkDoppelVsReflect_User/Doppel-12       	 3919911	       314.5 ns/op	     528 B/op	       6 allocs/op
+BenchmarkDoppelVsReflect_User/Doppel-12       	 3889916	       310.1 ns/op	     528 B/op	       6 allocs/op
+BenchmarkDoppelVsReflect_User/Doppel-12       	 3851284	       312.4 ns/op	     528 B/op	       6 allocs/op
+BenchmarkDoppelVsReflect_User/Doppel-12       	 3770581	       311.3 ns/op	     528 B/op	       6 allocs/op
+BenchmarkDoppelVsReflect_User/Doppel-12       	 3946806	       304.8 ns/op	     528 B/op	       6 allocs/op
+BenchmarkDoppelVsReflect_User/Doppel-12       	 3955010	       304.6 ns/op	     528 B/op	       6 allocs/op
+BenchmarkDoppelVsReflect_User/Doppel-12       	 3926836	       309.7 ns/op	     528 B/op	       6 allocs/op
+BenchmarkDoppelVsReflect_User/Doppel-12       	 3786105	       310.6 ns/op	     528 B/op	       6 allocs/op
+BenchmarkDoppelVsReflect_User/Doppel-12       	 3935186	       304.6 ns/op	     528 B/op	       6 allocs/op
+BenchmarkDoppelVsReflect_User/Doppel-12       	 3947568	       304.6 ns/op	     528 B/op	       6 allocs/op
+BenchmarkDoppelVsReflect_User/Reflect-12      	 1000000	      1120 ns/op	     968 B/op	      18 allocs/op
+BenchmarkDoppelVsReflect_User/Reflect-12      	 1000000	      1186 ns/op	     968 B/op	      18 allocs/op
+BenchmarkDoppelVsReflect_User/Reflect-12      	 1000000	      1142 ns/op	     968 B/op	      18 allocs/op
+BenchmarkDoppelVsReflect_User/Reflect-12      	 1000000	      1210 ns/op	     968 B/op	      18 allocs/op
+BenchmarkDoppelVsReflect_User/Reflect-12      	  773185	      1320 ns/op	     968 B/op	      18 allocs/op
+BenchmarkDoppelVsReflect_User/Reflect-12      	  921525	      1244 ns/op	     968 B/op	      18 allocs/op
+BenchmarkDoppelVsReflect_User/Reflect-12      	  974286	      1216 ns/op	     968 B/op	      18 allocs/op
+BenchmarkDoppelVsReflect_User/Reflect-12      	 1000000	      1143 ns/op	     968 B/op	      18 allocs/op
+BenchmarkDoppelVsReflect_User/Reflect-12      	 1000000	      1152 ns/op	     968 B/op	      18 allocs/op
+BenchmarkDoppelVsReflect_User/Reflect-12      	 1000000	      1200 ns/op	     968 B/op	      18 allocs/op
+BenchmarkDoppelVsReflect_Order/Doppel-12      	 1820275	       639.7 ns/op	    1136 B/op	      11 allocs/op
+BenchmarkDoppelVsReflect_Order/Doppel-12      	 1974070	       618.1 ns/op	    1136 B/op	      11 allocs/op
+BenchmarkDoppelVsReflect_Order/Doppel-12      	 1993406	       613.6 ns/op	    1136 B/op	      11 allocs/op
+BenchmarkDoppelVsReflect_Order/Doppel-12      	 1777696	       643.6 ns/op	    1136 B/op	      11 allocs/op
+BenchmarkDoppelVsReflect_Order/Doppel-12      	 1975960	       605.1 ns/op	    1136 B/op	      11 allocs/op
+BenchmarkDoppelVsReflect_Order/Doppel-12      	 2012854	       595.8 ns/op	    1136 B/op	      11 allocs/op
+BenchmarkDoppelVsReflect_Order/Doppel-12      	 2000743	       601.4 ns/op	    1136 B/op	      11 allocs/op
+BenchmarkDoppelVsReflect_Order/Doppel-12      	 1927418	       613.7 ns/op	    1136 B/op	      11 allocs/op
+BenchmarkDoppelVsReflect_Order/Doppel-12      	 1827535	       670.4 ns/op	    1136 B/op	      11 allocs/op
+BenchmarkDoppelVsReflect_Order/Doppel-12      	 1712924	       643.6 ns/op	    1136 B/op	      11 allocs/op
+BenchmarkDoppelVsReflect_Order/Reflect-12     	  570058	      2146 ns/op	    1784 B/op	      34 allocs/op
+BenchmarkDoppelVsReflect_Order/Reflect-12     	  571922	      2279 ns/op	    1784 B/op	      34 allocs/op
+BenchmarkDoppelVsReflect_Order/Reflect-12     	  541903	      2158 ns/op	    1784 B/op	      34 allocs/op
+BenchmarkDoppelVsReflect_Order/Reflect-12     	  541053	      2188 ns/op	    1784 B/op	      34 allocs/op
+BenchmarkDoppelVsReflect_Order/Reflect-12     	  580028	      2189 ns/op	    1784 B/op	      34 allocs/op
+BenchmarkDoppelVsReflect_Order/Reflect-12     	  590265	      2077 ns/op	    1784 B/op	      34 allocs/op
+BenchmarkDoppelVsReflect_Order/Reflect-12     	  562010	      2130 ns/op	    1784 B/op	      34 allocs/op
+BenchmarkDoppelVsReflect_Order/Reflect-12     	  554092	      2286 ns/op	    1784 B/op	      34 allocs/op
+BenchmarkDoppelVsReflect_Order/Reflect-12     	  564212	      2240 ns/op	    1784 B/op	      34 allocs/op
+BenchmarkDoppelVsReflect_Order/Reflect-12     	  550738	      2177 ns/op	    1784 B/op	      34 allocs/op
+BenchmarkDoppelVsReflect_UserLargeSlice/Doppel-12         	  146198	      8427 ns/op	   33216 B/op	       6 allocs/op
+BenchmarkDoppelVsReflect_UserLargeSlice/Doppel-12         	  144494	      9532 ns/op	   33216 B/op	       6 allocs/op
+BenchmarkDoppelVsReflect_UserLargeSlice/Doppel-12         	  146218	      8281 ns/op	   33216 B/op	       6 allocs/op
+BenchmarkDoppelVsReflect_UserLargeSlice/Doppel-12         	  142627	      8448 ns/op	   33216 B/op	       6 allocs/op
+BenchmarkDoppelVsReflect_UserLargeSlice/Doppel-12         	  144950	      8272 ns/op	   33216 B/op	       6 allocs/op
+BenchmarkDoppelVsReflect_UserLargeSlice/Doppel-12         	  137528	      8299 ns/op	   33216 B/op	       6 allocs/op
+BenchmarkDoppelVsReflect_UserLargeSlice/Doppel-12         	  143426	      8293 ns/op	   33216 B/op	       6 allocs/op
+BenchmarkDoppelVsReflect_UserLargeSlice/Doppel-12         	  145074	      8553 ns/op	   33216 B/op	       6 allocs/op
+BenchmarkDoppelVsReflect_UserLargeSlice/Doppel-12         	  147786	      8208 ns/op	   33216 B/op	       6 allocs/op
+BenchmarkDoppelVsReflect_UserLargeSlice/Doppel-12         	  147804	      8586 ns/op	   33216 B/op	       6 allocs/op
+BenchmarkDoppelVsReflect_UserLargeSlice/Reflect-12        	   36667	     32785 ns/op	   33656 B/op	      18 allocs/op
+BenchmarkDoppelVsReflect_UserLargeSlice/Reflect-12        	   36646	     32635 ns/op	   33656 B/op	      18 allocs/op
+BenchmarkDoppelVsReflect_UserLargeSlice/Reflect-12        	   36678	     32878 ns/op	   33656 B/op	      18 allocs/op
+BenchmarkDoppelVsReflect_UserLargeSlice/Reflect-12        	   36625	     32797 ns/op	   33656 B/op	      18 allocs/op
+BenchmarkDoppelVsReflect_UserLargeSlice/Reflect-12        	   36390	     32886 ns/op	   33656 B/op	      18 allocs/op
+BenchmarkDoppelVsReflect_UserLargeSlice/Reflect-12        	   36897	     32656 ns/op	   33656 B/op	      18 allocs/op
+BenchmarkDoppelVsReflect_UserLargeSlice/Reflect-12        	   36670	     32717 ns/op	   33656 B/op	      18 allocs/op
+BenchmarkDoppelVsReflect_UserLargeSlice/Reflect-12        	   36630	     32685 ns/op	   33656 B/op	      18 allocs/op
+BenchmarkDoppelVsReflect_UserLargeSlice/Reflect-12        	   36567	     32738 ns/op	   33656 B/op	      18 allocs/op
+BenchmarkDoppelVsReflect_UserLargeSlice/Reflect-12        	   35641	     32957 ns/op	   33656 B/op	      18 allocs/op
+BenchmarkDoppelVsReflect_UserLargeMap/Doppel-12           	   41368	     29211 ns/op	   54928 B/op	      10 allocs/op
+BenchmarkDoppelVsReflect_UserLargeMap/Doppel-12           	   40507	     29309 ns/op	   54928 B/op	      10 allocs/op
+BenchmarkDoppelVsReflect_UserLargeMap/Doppel-12           	   34888	     33028 ns/op	   54928 B/op	      10 allocs/op
+BenchmarkDoppelVsReflect_UserLargeMap/Doppel-12           	   41550	     29255 ns/op	   54928 B/op	      10 allocs/op
+BenchmarkDoppelVsReflect_UserLargeMap/Doppel-12           	   40838	     29326 ns/op	   54928 B/op	      10 allocs/op
+BenchmarkDoppelVsReflect_UserLargeMap/Doppel-12           	   41391	     29052 ns/op	   54928 B/op	      10 allocs/op
+BenchmarkDoppelVsReflect_UserLargeMap/Doppel-12           	   41234	     29155 ns/op	   54928 B/op	      10 allocs/op
+BenchmarkDoppelVsReflect_UserLargeMap/Doppel-12           	   40792	     29384 ns/op	   54928 B/op	      10 allocs/op
+BenchmarkDoppelVsReflect_UserLargeMap/Doppel-12           	   41169	     29133 ns/op	   54928 B/op	      10 allocs/op
+BenchmarkDoppelVsReflect_UserLargeMap/Doppel-12           	   40948	     29270 ns/op	   54928 B/op	      10 allocs/op
+BenchmarkDoppelVsReflect_UserLargeMap/Reflect-12          	   12091	     99104 ns/op	  103792 B/op	    2016 allocs/op
+BenchmarkDoppelVsReflect_UserLargeMap/Reflect-12          	   12193	     98312 ns/op	  103792 B/op	    2016 allocs/op
+BenchmarkDoppelVsReflect_UserLargeMap/Reflect-12          	   12178	     98537 ns/op	  103792 B/op	    2016 allocs/op
+BenchmarkDoppelVsReflect_UserLargeMap/Reflect-12          	   12132	     98677 ns/op	  103792 B/op	    2016 allocs/op
+BenchmarkDoppelVsReflect_UserLargeMap/Reflect-12          	   10000	    101445 ns/op	  103792 B/op	    2016 allocs/op
+BenchmarkDoppelVsReflect_UserLargeMap/Reflect-12          	   10000	    103026 ns/op	  103792 B/op	    2016 allocs/op
+BenchmarkDoppelVsReflect_UserLargeMap/Reflect-12          	   10000	    105398 ns/op	  103792 B/op	    2016 allocs/op
+BenchmarkDoppelVsReflect_UserLargeMap/Reflect-12          	   10000	    102141 ns/op	  103792 B/op	    2016 allocs/op
+BenchmarkDoppelVsReflect_UserLargeMap/Reflect-12          	   12032	     99706 ns/op	  103792 B/op	    2016 allocs/op
+BenchmarkDoppelVsReflect_UserLargeMap/Reflect-12          	   12092	     98949 ns/op	  103792 B/op	    2016 allocs/op
+PASS
+ok  	github.com/seyallius/doppel/doppel_test	119.439s
+?   	github.com/seyallius/doppel/manual	[no test files]
+PASS
+ok  	github.com/seyallius/doppel/manual/manual_test	0.005s
+PASS
+ok  	github.com/seyallius/doppel/registry	0.004s

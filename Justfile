@@ -29,6 +29,40 @@ test-coverage:
     go tool cover -html=coverage.out
 
 # ----------------------------------------------------------------
+# Benchmark
+# ----------------------------------------------------------------
+
+# Run benchmarks for all packages with memory allocation stats
+[group('Benchmark')]
+bench pattern=".":
+    go test -bench='{{ pattern }}' -benchmem ./...
+
+# Run benchmarks multiple times for statistical stability (count parameter allows variable runs)
+[group('Benchmark')]
+bench-count pattern="Benchmark" count="3":
+    go test -bench='{{ pattern }}' -benchmem -count={{ count }} ./...
+
+# Run benchmarks and save results to a file for later analysis with benchstat
+[group('Benchmark')]
+bench-save pattern="Benchmark" count="5" output="bench.txt":
+    go test -bench='{{ pattern }}' -benchmem -count={{ count }} ./... > {{ output }}
+
+# Compare benchmark result file statistically using benchstat (requires golang.org/x/perf/cmd/benchstat)
+[group('Benchmark')]
+benchstat file="bench.txt":
+    benchstat {{ file }} && benchstat {{ file }} > benchstat.txt
+
+# Compare two benchmark result files using benchstat (requires golang.org/x/perf/cmd/benchstat)
+[group('Benchmark')]
+benchstat-cmp old="old.txt" new="new.txt":
+    benchstat {{ old }} {{ new }} && benchstat {{ old }} {{ new }} > benchstat.txt
+
+# Run quick benchmark with default pattern (all benchmarks) and 1 iteration
+[group('Benchmark')]
+bench-quick pattern=".":
+    go test -bench='{{ pattern }}' -benchtime=1x ./...
+
+# ----------------------------------------------------------------
 # Code Quality
 # ----------------------------------------------------------------
 

@@ -78,11 +78,22 @@ func newUser() *User {
 }
 
 func newOrder(customer *User) *Order {
+	if customer == nil {
+		customer = newUser()
+	}
 	return &Order{
-		ID:       "ORD-001",
+		ID:       "order-1001",
 		Customer: customer,
-		Items:    []Score{{Label: "widget", Value: 9.99}, {Label: "gadget", Value: 24.99}},
-		Metadata: map[string]string{"source": "web", "promo": "SAVE10"},
+		Items: []Score{
+			{Label: "quality", Value: 98.75},
+			{Label: "speed", Value: 87.50},
+			{Label: "support", Value: 92.25},
+		},
+		Metadata: map[string]string{
+			"source":   "web",
+			"currency": "USD",
+			"priority": "high",
+		},
 	}
 }
 

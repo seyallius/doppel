@@ -1,0 +1,45 @@
+goos: linux
+goarch: amd64
+pkg: github.com/seyallius/doppel/doppel_test
+cpu: 11th Gen Intel(R) Core(TM) i5-11400H @ 2.70GHz
+                                          │  bench.txt  │
+                                          │   sec/op    │
+DoppelVsReflect_Score/Doppel-12             22.03n ± 8%
+DoppelVsReflect_Score/Reflect-12            131.8n ± 3%
+DoppelVsReflect_User/Doppel-12              309.9n ± 2%
+DoppelVsReflect_User/Reflect-12             1.193µ ± 4%
+DoppelVsReflect_Order/Doppel-12             615.9n ± 4%
+DoppelVsReflect_Order/Reflect-12            2.183µ ± 4%
+DoppelVsReflect_UserLargeSlice/Doppel-12    8.363µ ± 3%
+DoppelVsReflect_UserLargeSlice/Reflect-12   32.76µ ± 0%
+DoppelVsReflect_UserLargeMap/Doppel-12      29.26µ ± 0%
+DoppelVsReflect_UserLargeMap/Reflect-12     99.41µ ± 4%
+geomean                                     2.023µ
+
+                                          │  bench.txt   │
+                                          │     B/op     │
+DoppelVsReflect_Score/Doppel-12               24.00 ± 0%
+DoppelVsReflect_Score/Reflect-12              96.00 ± 0%
+DoppelVsReflect_User/Doppel-12                528.0 ± 0%
+DoppelVsReflect_User/Reflect-12               968.0 ± 0%
+DoppelVsReflect_Order/Doppel-12             1.109Ki ± 0%
+DoppelVsReflect_Order/Reflect-12            1.742Ki ± 0%
+DoppelVsReflect_UserLargeSlice/Doppel-12    32.44Ki ± 0%
+DoppelVsReflect_UserLargeSlice/Reflect-12   32.87Ki ± 0%
+DoppelVsReflect_UserLargeMap/Doppel-12      53.64Ki ± 0%
+DoppelVsReflect_UserLargeMap/Reflect-12     101.4Ki ± 0%
+geomean                                     2.558Ki
+
+                                          │  bench.txt  │
+                                          │  allocs/op  │
+DoppelVsReflect_Score/Doppel-12              1.000 ± 0%
+DoppelVsReflect_Score/Reflect-12             4.000 ± 0%
+DoppelVsReflect_User/Doppel-12               6.000 ± 0%
+DoppelVsReflect_User/Reflect-12              18.00 ± 0%
+DoppelVsReflect_Order/Doppel-12              11.00 ± 0%
+DoppelVsReflect_Order/Reflect-12             34.00 ± 0%
+DoppelVsReflect_UserLargeSlice/Doppel-12     6.000 ± 0%
+DoppelVsReflect_UserLargeSlice/Reflect-12    18.00 ± 0%
+DoppelVsReflect_UserLargeMap/Doppel-12       10.00 ± 0%
+DoppelVsReflect_UserLargeMap/Reflect-12     2.016k ± 0%
+geomean                                      14.28

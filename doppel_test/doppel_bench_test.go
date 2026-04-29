@@ -85,7 +85,7 @@ func BenchmarkManualClone_UserLargeSlice(b *testing.B) {
 func BenchmarkManualClone_UserLargeMap(b *testing.B) {
 	src := newUser()
 	src.Scores = make(map[string]int, 500)
-	for idx := range 500 {
+	for idx := 0; idx < 500; idx++ {
 		src.Scores[benchKey(idx)] = idx
 	}
 	b.ResetTimer()

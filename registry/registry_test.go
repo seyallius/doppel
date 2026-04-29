@@ -2,7 +2,6 @@ package registry_test
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 	"testing"
 
@@ -550,11 +549,4 @@ func TestRegistry_ThreadSafety(t *testing.T) {
 
 	waitGroup.Wait()
 	// No assertions needed: a data race would cause a test failure via -race.
-}
-
-// -------------------------------------------- Internal Helpers --------------------------------------------
-
-// formatType is used only in error messages; kept to avoid direct reflect import in tests.
-func formatType[T any]() string {
-	return fmt.Sprintf("%T", *new(T))
 }

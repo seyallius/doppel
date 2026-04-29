@@ -532,7 +532,7 @@ func TestCloneWithRegistry_Concurrency(t *testing.T) {
 	errChannel := make(chan error, goroutineCount)
 	var waitGroup sync.WaitGroup
 
-	for range goroutineCount {
+	for i := 0; i < goroutineCount; i++ {
 		waitGroup.Add(1)
 		go func() {
 			defer waitGroup.Done()

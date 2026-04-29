@@ -8,9 +8,7 @@ import (
 	"github.com/seyallius/doppel/manual"
 )
 
-// ---------------------------------------------------------------------------
-// CloneMap — fallible value cloner
-// ---------------------------------------------------------------------------
+// --- CloneMap — fallible value cloner --------------------
 
 func TestCloneMap_StringInt(t *testing.T) {
 	t.Parallel()
@@ -232,9 +230,7 @@ func TestCloneMap_ConditionalClone(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// CloneMapOf — infallible value cloner
-// ---------------------------------------------------------------------------
+// --- CloneMapOf — infallible value cloner --------------------
 
 func TestCloneMapOf(t *testing.T) {
 	t.Parallel()
@@ -280,58 +276,4 @@ func TestCloneMapOf_Independence(t *testing.T) {
 	if cloned["x"] == 999 {
 		t.Error("CloneMapOf clone shares storage with original")
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Benchmarks
-// ---------------------------------------------------------------------------
-
-func BenchmarkCloneMap_StringInt_50(b *testing.B) {
-	src := makeStringIntMap(50)
-	b.ResetTimer()
-	for range b.N {
-		_, _ = manual.CloneMap(src, manual.Identity[int])
-	}
-}
-
-func BenchmarkCloneMap_StringInt_500(b *testing.B) {
-	src := makeStringIntMap(500)
-	b.ResetTimer()
-	for range b.N {
-		_, _ = manual.CloneMap(src, manual.Identity[int])
-	}
-}
-
-func BenchmarkCloneMapOf_StringInt_500(b *testing.B) {
-	src := makeStringIntMap(500)
-	b.ResetTimer()
-	for range b.N {
-		_ = manual.CloneMapOf(src, manual.IdentityValue[int])
-	}
-}
-
-func BenchmarkShallowCopy_StringInt_500(b *testing.B) {
-	src := makeStringIntMap(500)
-	b.ResetTimer()
-	for range b.N {
-		dst := make(map[string]int, len(src))
-		for k, v := range src {
-			dst[k] = v
-		}
-		_ = dst
-	}
-}
-
-// makeStringIntMap creates a map[string]int with n entries for benchmarking.
-func makeStringIntMap(n int) map[string]int {
-	m := make(map[string]int, n)
-	for idx := 0; idx < n; idx++ {
-		m[makeStringSlice(1)[0]] = idx // reuse helper for key uniqueness
-		m[key(idx)] = idx * 7
-	}
-	return m
-}
-
-func key(idx int) string {
-	return "key_" + string(rune('a'+idx%26)) + "_" + string(rune('0'+idx%10))
 }

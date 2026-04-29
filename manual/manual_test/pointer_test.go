@@ -7,9 +7,7 @@ import (
 	"github.com/seyallius/doppel/manual"
 )
 
-// ---------------------------------------------------------------------------
-// ClonePointer — fallible value cloner
-// ---------------------------------------------------------------------------
+// --- ClonePointer — fallible value cloner --------------------
 
 func TestClonePointer_Int(t *testing.T) {
 	t.Parallel()
@@ -187,9 +185,7 @@ func TestClonePointer_String(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// ClonePointerOf — infallible value cloner
-// ---------------------------------------------------------------------------
+// --- ClonePointerOf — infallible value cloner --------------------
 
 func TestClonePointerOf(t *testing.T) {
 	t.Parallel()
@@ -224,46 +220,4 @@ func TestClonePointerOf(t *testing.T) {
 			}
 		})
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Benchmarks
-// ---------------------------------------------------------------------------
-
-func BenchmarkClonePointer_Int(b *testing.B) {
-	src := intPointer(42)
-	b.ResetTimer()
-	for range b.N {
-		_, _ = manual.ClonePointer(src, manual.Identity[int])
-	}
-}
-
-func BenchmarkClonePointerOf_Int(b *testing.B) {
-	src := intPointer(42)
-	b.ResetTimer()
-	for range b.N {
-		_ = manual.ClonePointerOf(src, manual.IdentityValue[int])
-	}
-}
-
-func BenchmarkShallowPointerCopy_Int(b *testing.B) {
-	src := intPointer(42)
-	b.ResetTimer()
-	for range b.N {
-		dst := src // shallow: same address
-		_ = dst
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-func intPointer(v int) *int          { return &v }
-func stringPointer(s string) *string { return &s }
-func derefInt(p *int) int {
-	if p == nil {
-		return 0
-	}
-	return *p
 }

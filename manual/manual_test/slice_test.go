@@ -2,16 +2,13 @@ package manual_test
 
 import (
 	"errors"
-	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/seyallius/doppel/manual"
 )
 
-// ---------------------------------------------------------------------------
-// CloneSlice — fallible element cloner
-// ---------------------------------------------------------------------------
+// --- CloneSlice — fallible element cloner --------------------
 
 func TestCloneSlice(t *testing.T) {
 	t.Parallel()
@@ -214,9 +211,7 @@ func TestCloneSlice_ErrorContext(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// CloneSliceOf — infallible element cloner
-// ---------------------------------------------------------------------------
+// --- CloneSliceOf — infallible element cloner --------------------
 
 func TestCloneSliceOf(t *testing.T) {
 	t.Parallel()
@@ -262,105 +257,4 @@ func TestCloneSliceOf_Independence(t *testing.T) {
 	if cloned[0] == 999 {
 		t.Error("CloneSliceOf clone shares memory with original")
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-// contains reports whether sub is a substring of s.
-func contains(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub || len(sub) == 0 ||
-		func() bool {
-			for i := 0; i <= len(s)-len(sub); i++ {
-				if s[i:i+len(sub)] == sub {
-					return true
-				}
-			}
-			return false
-		}())
-}
-
-// ---------------------------------------------------------------------------
-// Benchmarks
-// ---------------------------------------------------------------------------
-
-func BenchmarkCloneSlice_Strings_10(b *testing.B) {
-	src := makeStringSlice(10)
-	b.ResetTimer()
-	for range b.N {
-		_, _ = manual.CloneSlice(src, manual.Identity[string])
-	}
-}
-
-func BenchmarkCloneSlice_Strings_100(b *testing.B) {
-	src := makeStringSlice(100)
-	b.ResetTimer()
-	for range b.N {
-		_, _ = manual.CloneSlice(src, manual.Identity[string])
-	}
-}
-
-func BenchmarkCloneSlice_Strings_1000(b *testing.B) {
-	src := makeStringSlice(1000)
-	b.ResetTimer()
-	for range b.N {
-		_, _ = manual.CloneSlice(src, manual.Identity[string])
-	}
-}
-
-func BenchmarkCloneSliceOf_Strings_1000(b *testing.B) {
-	src := makeStringSlice(1000)
-	b.ResetTimer()
-	for range b.N {
-		_ = manual.CloneSliceOf(src, manual.IdentityValue[string])
-	}
-}
-
-func BenchmarkShallowCopy_Strings_1000(b *testing.B) {
-	src := makeStringSlice(1000)
-	b.ResetTimer()
-	for range b.N {
-		dst := make([]string, len(src))
-		copy(dst, src)
-		_ = dst
-	}
-}
-
-func BenchmarkCloneSlice_Ints_1000(b *testing.B) {
-	src := makeIntSlice(1000)
-	b.ResetTimer()
-	for range b.N {
-		_, _ = manual.CloneSlice(src, manual.Identity[int])
-	}
-}
-
-func BenchmarkShallowCopy_Ints_1000(b *testing.B) {
-	src := makeIntSlice(1000)
-	b.ResetTimer()
-	for range b.N {
-		dst := make([]int, len(src))
-		copy(dst, src)
-		_ = dst
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Benchmark helpers
-// ---------------------------------------------------------------------------
-
-func makeStringSlice(size int) []string {
-	slice := make([]string, size)
-	for idx := range slice {
-		slice[idx] = fmt.Sprintf("element_%d", idx)
-	}
-	return slice
-}
-
-func makeIntSlice(size int) []int {
-	slice := make([]int, size)
-	for idx := range slice {
-		slice[idx] = idx * 3
-	}
-	return slice
 }

@@ -23,9 +23,11 @@ copying decision is visible in code.
     - [doppel.MustClone](#doppelmustclone)
     - [doppel.CloneWith](#doppelclonewith)
     - [doppel.MustCloneWith](#doppelmustclonewith)
+    - [doppel.CloneWithRegistry](#doppelclonewithregistry)
     - [manual.CloneSlice / CloneSliceOf](#manualcloneslice--clonesliceof)
     - [manual.CloneMap / CloneMapOf](#manualclonemap--clonemapof)
     - [manual.ClonePointer / ClonePointerOf](#manualclonepointer--clonepointerof)
+    - [engine.Engine (Reflection Fallback)](#engineengine-reflection-fallback)
 - [Usage Guide](#usage-guide)
     - [Step 1 — Simple struct (primitives only)](#step-1--simple-struct-primitives-only)
     - [Step 2 — Struct with a pointer field](#step-2--struct-with-a-pointer-field)
@@ -34,9 +36,10 @@ copying decision is visible in code.
     - [Step 5 — External Cloner (no SelfClonable)](#step-5--external-cloner-no-selfclonable)
     - [Step 6 — Conditional / filtered cloning](#step-6--conditional--filtered-cloning)
     - [Step 7 — Cloner registry (Phase 2)](#step-7--cloner-registry-phase-2)
-    - [Step 8 — Conditional clone via registry](#step-8--conditional-clone-via-registry)
+    - [Step 8 — Reflection fallback usage (Phase 4)](#step-8--reflection-fallback-usage-phase-4)
 - [Error Handling](#error-handling)
 - [Nil Safety Contract](#nil-safety-contract)
+- [Struct Tag Directives](#struct-tag-directives)
 - [Running Tests](#running-tests)
 - [Benchmark Results](#benchmark-results)
 - [Roadmap](#roadmap)
@@ -57,14 +60,16 @@ it comes with real costs:
 
 `doppel` inverts the priority order:
 
-| Priority | Strategy                                 | When used                                      |
-|----------|------------------------------------------|------------------------------------------------|
-| 1        | **Manual clone** (your `Clone()` method) | Always, by default                             |
-| 2        | **External Cloner[T]** (via `CloneWith`) | When clone logic needs injected context        |
-| 3        | **Reflection fallback**                  | Phase 4 — only when neither of the above exist |
+| Priority | Strategy                                         | When used                                                  |
+|----------|--------------------------------------------------|------------------------------------------------------------|
+| 1        | **Manual clone** (your `Clone()` method)         | Always, by default — fastest path                          |
+| 2        | **External Cloner[T]** (via `CloneWith`)         | When clone logic needs injected context                    |
+| 3        | **Registry Cloner[T]** (via `CloneWithRegistry`) | When you want type-level override without modifying source |
+| 4        | **Reflection fallback** (`engine.Engine`)        | Phase 4 — only when none of the above exist                |
 
 In Phase 1, reflection is not present at all. Every copy decision is written explicitly by you, composed of small
-generic helpers.
+generic helpers. Reflection is now available as a **controlled fallback** in Phase 4 — never the default, always the
+last resort.
 
 ---
 
@@ -86,6 +91,9 @@ generic helpers.
 5. **Errors carry context.** Every helper wraps failures with a field-path string (`core.WrapError`) so that when a
    clone fails deep inside a nested struct, the error message tells you exactly which field triggered it.
 
+6. **Graceful degradation.** When manual clone logic isn't available, the reflection engine provides a safe, correct
+   fallback — with clear performance trade-offs documented.
+
 ---
 
 ## Installation
@@ -94,7 +102,7 @@ generic helpers.
 go get github.com/seyallius/doppel
 ```
 
-Requires **Go 1.26.2** or later (for range-over-integer and generic type inference improvements).
+Requires **Go 1.25** or later (for generic type inference and range-over-integer improvements).
 
 ---
 
@@ -110,7 +118,7 @@ github.com/seyallius/doppel/
 ├── core/
 │   ├── cloner.go      Cloner[T] interface, FuncCloner[T] adapter,
 │   │                  SelfClonable[T] interface
-│   └── errors.go      CloneError, WrapError, ErrNilSource
+│   └── errors.go      CloneError, WrapError, ErrNilSource, ErrNoCloner
 │
 ├── manual/
 │   ├── primitives.go  Identity[T], IdentityValue[T]
@@ -118,9 +126,13 @@ github.com/seyallius/doppel/
 │   ├── map.go         CloneMap[K,V], CloneMapOf[K,V]
 │   └── pointer.go     ClonePointer[T], ClonePointerOf[T]
 │
-└── registry/          ← Phase 2
-    └── registry.go    Registry, New, Register[T], Lookup[T],
-                       Deregister[T], Has[T], ErrNoCloner
+├── registry/          ← Phase 2
+│   └── registry.go    Registry, New, Register[T], Lookup[T],
+│                      Deregister[T], Has[T], LookupAny (bridge)
+│
+└── engine/            ← Phase 4
+    └── engine.go      Engine, New, Clone, TypeLookup interface
+                       Reflection-based fallback with cycle safety
 ```
 
 **Dependency graph** (acyclic, no circular imports):
@@ -131,7 +143,8 @@ doppel    ──imports──▶  manual
 doppel    ──imports──▶  registry
 manual    ──imports──▶  core
 registry  ──imports──▶  core
-core      ──imports──▶  (stdlib only)
+engine    ──imports──▶  core
+engine    ──imports──▶  (stdlib reflect)
 ```
 
 ---
@@ -178,7 +191,7 @@ itself.
 
 ```go
 manual.Identity[T](src T) (T, error)   // for use with CloneSlice / CloneMap / ClonePointer
-manual.IdentityValue[T](src T) T        // for use with CloneSliceOf / CloneMapOf / ClonePointerOf
+manual.IdentityValue[T](src T) T       // for use with CloneSliceOf / CloneMapOf / ClonePointerOf
 ```
 
 For primitive Go types (`bool`, all integer and float types, `string`, `complex64/128`), a direct assignment is already
@@ -248,8 +261,9 @@ func CloneWithRegistry[T any](src T, reg *registry.Registry) (T, error)
 Produces a deep copy of `src` by walking the following priority chain:
 
 1. **Registered `Cloner[T]`** — if `reg` contains a cloner for type T, it is called. This is the fastest path.
-2. **`core.SelfClonable[T]` fallback** — if T implements `SelfClonable[T]`, its `Clone()` method is called. All existing `SelfClonable` types work without registration.
-3. **`registry.ErrNoCloner`** — returned when neither strategy is available.
+2. **`core.SelfClonable[T]` fallback** — if T implements `SelfClonable[T]`, its `Clone()` method is called. All existing
+   `SelfClonable` types work without registration.
+3. **`core.ErrNoCloner`** — returned when neither strategy is available.
 
 Reflection is used only inside the registry for type key derivation — never for field access or value copying.
 
@@ -259,68 +273,6 @@ registry.Register(reg, core.NewFuncCloner(cloneAddress))
 
 cloned, err := doppel.CloneWithRegistry(addr, reg)
 ```
-
----
-
-### registry.New
-
-```go
-func New() *Registry
-```
-
-Creates an empty, thread-safe Registry ready for use.
-
----
-
-### registry.Register
-
-```go
-func Register[T any](r *Registry, cloner core.Cloner[T])
-```
-
-Stores `cloner` as the `Cloner[T]` for type `T`. Calling `Register` a second time for the same type silently replaces the first registration. Thread-safe.
-
-Note: `Register` is a package-level generic function rather than a method because Go does not support type parameters on methods.
-
----
-
-### registry.Lookup
-
-```go
-func Lookup[T any](r *Registry) (core.Cloner[T], bool)
-```
-
-Returns the registered `Cloner[T]` for type `T` and `true` if found; `nil` and `false` otherwise. Thread-safe.
-
----
-
-### registry.Deregister
-
-```go
-func Deregister[T any](r *Registry)
-```
-
-Removes the cloner for type `T`. Calling `Deregister` on an unregistered type is a no-op. Thread-safe.
-
----
-
-### registry.Has
-
-```go
-func Has[T any](r *Registry) bool
-```
-
-Reports whether a cloner is registered for type `T`. Thread-safe.
-
----
-
-### core.ErrNoCloner
-
-```go
-var ErrNoCloner = errors.New("doppel/registry: no cloner registered and type does not implement SelfClonable")
-```
-
-Sentinel error returned by `CloneWithRegistry` when neither a registered `Cloner[T]` nor a `SelfClonable[T]` implementation is found. Use `errors.Is` to check for it.
 
 ---
 
@@ -407,6 +359,60 @@ label, err := manual.ClonePointer(u.Label, manual.Identity[string])
 ```
 
 **Nil contract:** a nil `src` returns `(nil, nil)` without calling `cloneVal`.
+
+### engine.Engine (Reflection Fallback)
+
+```go
+// Engine performs reflection-based deep copying as the LAST resort.
+// Priority chain: Registered Cloner[T] → SelfClonable[T] → engine (reflection)
+type Engine struct { /* unexported */ }
+
+// New creates an Engine. Pass a *registry.Registry (or any TypeLookup) to have
+// the engine consult registered Cloner[T]s at every node of the value graph.
+func New(lookup TypeLookup) *Engine
+
+// Clone deep-copies src and returns a reflect.Value of the same type.
+func (e *Engine) Clone(src reflect.Value) (reflect.Value, error)
+```
+
+The reflection engine is **never the default** — it is consulted only when:
+
+- No `Cloner[T]` is registered for the type, AND
+- The value does not implement `core.SelfClonable[T]`
+
+**Features:**
+
+- ✅ Kind-specific cloning: `Ptr`, `Struct`, `Slice`, `Map`, `Array`, `Interface`, primitives
+- ✅ Struct tag support: `doppel:"-"` (skip), `doppel:"shallow"` (share backing)
+- ✅ Cycle safety: `visited` map prevents infinite recursion on cyclic graphs
+- ✅ Shared reference preservation: if two pointers point to same allocation, clone does too
+- ✅ Nil-safety: preserves `nil` vs `empty` distinction for slices/maps/pointers
+- ✅ Error context: wraps failures with field-path via `core.WrapError`
+- ✅ Concurrency: all mutable state is per-call; `Engine` is safe for concurrent use
+
+**Limitations:**
+
+- ❌ Unexported fields are skipped (use `SelfClonable[T]` to include them)
+- ❌ `chan`, `func`, `unsafe.Pointer` are shallow-copied (reference semantics)
+- ❌ Interface values cloned via concrete type; dynamic dispatch preserved
+
+```go
+// Example: Using the reflection fallback for a third-party type
+type ThirdParty struct {
+    Data map[string][]int
+}
+
+src := ThirdParty{Data: map[string][]int{"x": {1, 2, 3}}}
+
+// Create engine with nil lookup — falls through to pure reflection
+eng := engine.New(nil)
+clonedVal, err := eng.Clone(reflect.ValueOf(src))
+if err != nil {
+    log.Fatal(err)
+}
+cloned := clonedVal.Interface().(ThirdParty)
+// cloned is now an independent deep copy ✨
+```
 
 ---
 
@@ -603,6 +609,68 @@ validUsers, err := manual.CloneSlice(allUsers, func(u *User) (*User, error) {
 
 ---
 
+### Step 7 — Cloner registry
+
+Register custom clone logic for types at application startup. The registry is thread-safe and can be shared across
+goroutines.
+
+```go
+reg := registry.New()
+
+// Register a custom cloner for Address
+registry.Register(reg, core.NewFuncCloner(func (src Address) (Address, error) {
+    return Address{City: strings.ToUpper(src.City)}, nil // transform on clone
+}))
+
+// Use CloneWithRegistry — it will find the registered cloner automatically
+cloned, err := doppel.CloneWithRegistry(addr, reg)
+```
+
+**Priority chain in `CloneWithRegistry`:**
+
+1. Registered `Cloner[T]` → 2. `SelfClonable[T]` → 3. `core.ErrNoCloner`
+
+---
+
+### Step 8 — Reflection fallback usage
+
+When you have a type with no manual clone and no registered cloner, use the reflection engine as a safe fallback.
+
+```go
+// For prototyping or legacy integration where manual Clone() isn't feasible yet:
+type LegacyType struct {
+    Data map[string][]int
+    Meta interface{}
+}
+
+src := LegacyType{
+    Data: map[string][]int{"x": {1, 2, 3}},
+    Meta: "some metadata",
+}
+
+// Option A: Pure reflection (no registry)
+eng := engine.New(nil)
+clonedVal, err := eng.Clone(reflect.ValueOf(src))
+
+// Option B: Reflection + registry integration (recommended)
+// The engine will consult registered cloners at every graph node
+reg := registry.New()
+registry.Register(reg, core.NewFuncCloner(cloneCustomType))
+eng := engine.New(reg)
+clonedVal, err := eng.Clone(reflect.ValueOf(src))
+
+if err != nil {
+    log.Fatal(err)
+}
+cloned := clonedVal.Interface().(LegacyType)
+```
+
+> 💡 **Pro Tip**: Prefer manual `Clone()` implementations for performance-critical paths. Use the reflection fallback
+> for prototyping, legacy integration, or when you need "just works" behavior without boilerplate. Benchmarks show
+> manual cloning is ~5-10× faster than reflection.
+
+---
+
 ## Error Handling
 
 Every fallible helper returns `(T, error)`. Errors are wrapped with `core.WrapError` at each layer, building a context
@@ -646,6 +714,28 @@ is also `nil` — not `[]T{}`.
 
 ---
 
+## Struct Tag Directives
+
+The `engine.Engine` respects the following `doppel` struct tags for fine-grained control:
+
+```go
+type Example struct {
+    SkipMe    string   `doppel:"-"`       // ← skipped; clone gets zero value
+    ShareMe   []string `doppel:"shallow"` // ← shallow copy; shares backing array
+    DeepClone string                      // ← default: deep copy recursively
+}
+```
+
+| Tag                | Behavior                                                                                                                |
+|--------------------|-------------------------------------------------------------------------------------------------------------------------|
+| `doppel:"-"`       | Field is skipped entirely; clone receives the zero value for that field                                                 |
+| `doppel:"shallow"` | Field is assigned without recursing; clone shares the field's value (useful for immutable or reference-semantics types) |
+
+> ⚠️ **Note**: Struct tags are only processed by the reflection engine (`engine/`). Manual clone methods and registry
+> cloners ignore tags — you control the logic explicitly.
+
+---
+
 ## Running Tests
 
 ```bash
@@ -664,46 +754,51 @@ go test -bench=. -benchmem ./...
 
 # Benchmarks for a specific package
 go test -bench=. -benchmem ./manual/...
+
+# Save benchmarks for comparison
+just bench-save output=bench.txt
+
+# Compare with benchstat
+just benchstat file=bench.txt
 ```
 
 ---
 
 ## Benchmark Results
 
-Indicative results on an Apple M2 (your numbers will vary). The key takeaway is the comparison between manual deep copy
-and a plain shallow struct copy — the gap is the cost of the allocations you're explicitly making, with no reflection
-overhead on top.
+Indicative results on **11th Gen Intel(R) Core(TM) i5-11400H @ 2.70GHz** (your numbers will vary).
+
+### Doppel (Manual) vs Reflection Comparison
+
+| Benchmark        | Doppel (ns/op) | Reflection (ns/op) | Speedup   | Doppel (B/op) | Reflection (B/op) | Doppel (allocs/op) | Reflection (allocs/op) |
+|------------------|----------------|--------------------|-----------|---------------|-------------------|--------------------|------------------------|
+| `Score`          | 22.03 ± 8%     | 131.8 ± 3%         | **~6×**   | 24            | 96                | 1                  | 4                      |
+| `User`           | 309.9 ± 2%     | 1.193µ ± 4%        | **~4×**   | 528           | 968               | 6                  | 18                     |
+| `Order`          | 615.9 ± 4%     | 2.183µ ± 4%        | **~3.5×** | 1.109Ki       | 1.742Ki           | 11                 | 34                     |
+| `UserLargeSlice` | 8.363µ ± 3%    | 32.76µ ± 0%        | **~4×**   | 32.44Ki       | 32.87Ki           | 6                  | 18                     |
+| `UserLargeMap`   | 29.26µ ± 0%    | 99.41µ ± 4%        | **~3.4×** | 53.64Ki       | 101.4Ki           | 10                 | 2,016                  |
+
+**Key takeaways:**
+
+- 🚀 Manual cloning is **3-6× faster** than reflection-based cloning across all test cases
+- 🧠 Manual cloning uses **~40-95% fewer allocations**, especially noticeable with large maps
+- ⚡ The gap grows with complexity — nested structs and large collections benefit most from explicit cloning
+- 🔁 Reflection fallback is still **correct and safe** — use it when convenience outweighs performance needs
+
+### Engine-Specific Benchmarks
 
 ```
-
-// Manual deep copy (Integration)
-BenchmarkManualClone_Address            53882752        22.81 ns/op	       0 B/op	       0 allocs/op
-BenchmarkManualClone_User               3381873	        381.7 ns/op	     528 B/op	       6 allocs/op
-BenchmarkManualClone_Order              1746865	        683.0 ns/op	    1104 B/op	      11 allocs/op
-BenchmarkManualClone_UserLargeSlice     250011	         4403 ns/op	   16864 B/op	       6 allocs/op
-BenchmarkManualClone_UserLargeMap       721894	         1701 ns/op	    1256 B/op	       8 allocs/op
-
-// Manual shallow copy (Integration)
-BenchmarkShallowCopy_Address            876615787       1.337 ns/op	       0 B/op	       0 allocs/op
-BenchmarkShallowCopy_User               440226171	    2.722 ns/op	       0 B/op	       0 allocs/op
-BenchmarkShallowCopy_Order              887047076	    1.336 ns/op	       0 B/op	       0 allocs/op
-
-// Registry (Integration)
-BenchmarkManualClone_Address            53882752        22.81 ns/op	       0 B/op	       0 allocs/op
-BenchmarkManualClone_User               3381873	        381.7 ns/op	     528 B/op	       6 allocs/op
-BenchmarkManualClone_Order              1746865	        683.0 ns/op	    1104 B/op	      11 allocs/op
-BenchmarkManualClone_UserLargeSlice     250011	         4403 ns/op	   16864 B/op	       6 allocs/op
-BenchmarkManualClone_UserLargeMap       721894	         1701 ns/op	    1256 B/op	       8 allocs/op
-
-// Registry
-BenchmarkRegistry_Register              6840673	        173.7 ns/op	     368 B/op	       3 allocs/op
-BenchmarkRegistry_Lookup_Hit            32958560        36.27 ns/op	       0 B/op	       0 allocs/op
-BenchmarkRegistry_Lookup_Miss           51553134        23.16 ns/op	       0 B/op	       0 allocs/op
-BenchmarkRegistry_Has                   39558565        30.41 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEngine_PlainStruct            2272365     520.8 ns/op     88 B/op     5 allocs/op
+BenchmarkEngine_NestedStruct            736201    1586 ns/op    360 B/op    14 allocs/op
+BenchmarkEngine_LargeSlice               12734   93976 ns/op  16240 B/op  1003 allocs/op
+BenchmarkEngine_LargeMap                  8905  126708 ns/op  63640 B/op  2005 allocs/op
+BenchmarkEngine_WithTypeLookup_Hit    14146173    83.50 ns/op     48 B/op     1 allocs/op  ← registry hit!
+BenchmarkEngine_SelfClonable           1671700   715.6 ns/op    232 B/op     8 allocs/op
+BenchmarkEngine_ShallowBaseline      975549486   1.229 ns/op      0 B/op     0 allocs/op
 ```
 
-For slices and maps of primitives, the gap between manual deep copy and shallow copy is entirely the cost of allocating
-independent backing storage — unavoidable for true independence. There is no reflection tax.
+> 💡 **Pro Tip**: When using the reflection engine, register cloners for hot-path types via `TypeLookup`. The
+> `BenchmarkEngine_WithTypeLookup_Hit` shows that a registry hit reduces reflection overhead to near-zero.
 
 ---
 
@@ -714,10 +809,10 @@ independent backing storage — unavoidable for true independence. There is no r
 | Phase | Focus                                                          | Status     |
 |-------|----------------------------------------------------------------|------------|
 | **1** | Manual deep copy foundation (this release)                     | ✅ Complete |
-| **2** | Cloner registry — per-type override, thread-safe lookup        | 🔜 Next    |
-| **3** | Field-level cloners — per-field override and conditional logic | 📋 Planned |
-| **4** | Reflection fallback — automatic clone for unregistered types   | 📋 Planned |
-| **5** | Cycle detection — safe cloning of pointer graphs               | 📋 Planned |
+| **2** | Cloner registry — per-type override, thread-safe lookup        | ✅ Complete |
+| **3** | Field-level cloners — per-field override and conditional logic | 🔜 Next    |
+| **4** | Reflection fallback — automatic clone for unregistered types   | ✅ Complete |
+| **5** | Cycle detection — safe cloning of pointer graphs               | 🔜 Next    |
 | **6** | Benchmarking suite — cross-strategy comparison                 | 📋 Planned |
 | **7** | API polish — `CloneWithOptions`, JSON-tag filtering, docs      | 📋 Planned |
 
@@ -734,10 +829,10 @@ independent backing storage — unavoidable for true independence. There is no r
 
 # 🚀 PHASE 2 — Cloner Registry (Extensibility Layer)
 
-| **Category**     | **Details**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-|------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Goal**         | Allow users to plug in custom cloning logic                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| **Requirements** | 1. Implement registry system: `type Registry struct { typeCloners map[reflect.Type]any }`<br>2. Allow registration: `func (r *Registry) RegisterCloner(t reflect.Type, cloner any)`<br>3. Lookup logic: If custom cloner exists → use it, Otherwise fallback to manual cloning.<br>4. Still DO NOT implement reflection-based cloning yet. Reflection is only allowed for TYPE IDENTIFICATION.<br>5. Support: Per-type cloner override, Thread-safe registry.<br>6. Design API: `doppel.CloneWithRegistry(obj, registry)`<br>7. Add tests: Custom struct cloner override, Ensure override is respected. |
+| **Category**     | **Details**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+|------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Goal**         | Allow users to plug in custom cloning logic                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **Requirements** | 1. Implement registry system: `type Registry struct { typeCloners map[reflect.Type]any }`<br>2. Allow registration: `func Register[T any](r *Registry, cloner core.Cloner[T])`<br>3. Lookup logic: If custom cloner exists → use it, Otherwise fallback to manual cloning.<br>4. Still DO NOT implement reflection-based cloning yet. Reflection is only allowed for TYPE IDENTIFICATION.<br>5. Support: Per-type cloner override, Thread-safe registry.<br>6. Design API: `doppel.CloneWithRegistry(obj, registry)`<br>7. Add tests: Custom struct cloner override, Ensure override is respected. |
 
 ---
 
@@ -750,36 +845,42 @@ independent backing storage — unavoidable for true independence. There is no r
 
 ---
 
-# 🚀 PHASE 4 — Reflection Fallback (Controlled, Not Default)
+# 🚀 PHASE 4 — Reflection Fallback (Controlled, Not Default) ✅ COMPLETE
 
-| **Category**     | **Details**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-|------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Goal**         | Introduce reflection as a fallback only                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| **Requirements** | 1. Implement reflection-based deep copy engine.<br>2. This should ONLY be used when: No manual clone exists, No custom cloner exists.<br>3. Support: Structs, Maps, Slices, Pointers, Interfaces (best-effort).<br>4. Handle: Nested objects, Zero values, Unexported fields (skip safely).<br>5. Add configuration: `type Options struct { UseReflectionFallback bool }`<br>6. Default behavior: Reflection fallback is ENABLED but LAST priority.<br>7. Add tests: Complex nested structures, Interface fields. |
+| **Category**       | **Details**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+|--------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Goal**           | Introduce reflection as a fallback only when manual clone or registry cloner is unavailable                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **Priority Chain** | `Registered Cloner[T]` → `core.SelfClonable[T]` → `engine.Engine` (reflection) — reflection is **never** the default, always the last resort                                                                                                                                                                                                                                                                                                                                                                            |
+| **Requirements**   | ✅ Implement reflection-based deep copy engine in `engine/`<br>✅ Support: Structs, Maps, Slices, Pointers, Arrays, Interfaces (best-effort)<br>✅ Handle: Nested objects, Zero values, Unexported fields (skip safely)<br>✅ Respect `doppel:"-"` and `doppel:"shallow"` struct tags<br>✅ Cycle safety via `visited` map (shared reference preservation)<br>✅ Concurrency safety via per-call `cloneState`<br>✅ Error context via `core.WrapError`<br>✅ Bridge to registry via `TypeLookup` interface (acyclic dependency) |
+| **API**            | `engine.New(lookup TypeLookup) *Engine`<br>`func (e *Engine) Clone(src reflect.Value) (reflect.Value, error)`<br>`registry.LookupAny(t reflect.Type)` — bridge method                                                                                                                                                                                                                                                                                                                                                   |
+| **When to Use**    | - Prototyping with third-party types you can't modify<br>- Legacy code migration where manual `Clone()` isn't feasible yet<br>- Dynamic scenarios where type isn't known at compile time<br>⚠️ **Performance note**: Manual cloning is 3-6× faster; use reflection fallback judiciously                                                                                                                                                                                                                                 |
+| **Limitations**    | - Unexported fields are skipped (use `SelfClonable[T]` to include them)<br>- `chan`, `func`, `unsafe.Pointer` are shallow-copied (reference semantics)<br>- Interface values cloned via concrete type; dynamic dispatch preserved                                                                                                                                                                                                                                                                                       |
+| **Tests**          | ✅ Primitives, nested structs, slices, maps, arrays, interfaces<br>✅ Nil vs empty distinction<br>✅ Struct tag directives<br>✅ Cyclic graphs (self-loop, two-node cycle)<br>✅ Shared pointer preservation<br>✅ Error propagation with context<br>✅ Concurrency safety (50 goroutines)                                                                                                                                                                                                                                     |
+| **Benchmarks**     | See `engine/engine_bench_test.go` and `benchstat.txt` — reflection path is ~3-6× slower than manual, but still correct and safe                                                                                                                                                                                                                                                                                                                                                                                         |
 
 ---
 
-# 🚀 PHASE 5 — Cycle Detection (Advanced)
+# 🚀 PHASE 5 — Cycle Detection (Advanced) 🔜 NEXT
 
-| **Category**     | **Details**                                                                                                                                                                                                                                                                                      |
-|------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Goal**         | Prevent infinite recursion                                                                                                                                                                                                                                                                       |
-| **Requirements** | 1. Detect cyclic references using a visited map.<br>2. Track: Pointer addresses, Already cloned objects.<br>3. If cycle detected: Return already cloned instance.<br>4. Ensure: No infinite recursion, Graph integrity maintained.<br>5. Add tests: Self-referencing structs, Mutual references. |
+| **Category**     | **Details**                                                                                                                                                                                                                                                                                                                                                           |
+|------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Goal**         | Strengthen cycle detection semantics and add explicit cycle-handling options                                                                                                                                                                                                                                                                                          |
+| **Requirements** | 1. Enhance `visited` map to track full graph topology.<br>2. Add `CyclePolicy` enum: `PreserveShared`, `BreakCycles`, `ErrorOnCycle`.<br>3. Ensure: No infinite recursion, Graph integrity maintained per policy.<br>4. Add tests: Self-referencing structs, Mutual references, Diamond graphs.<br>5. Document trade-offs: memory overhead vs correctness guarantees. |
 
 ---
 
 # 🚀 PHASE 6 — Performance & Benchmarking
 
-| **Category**     | **Details**                                                                                                                                                                                                                                      |
-|------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Goal**         | Prove your design is legit                                                                                                                                                                                                                       |
-| **Requirements** | 1. Write benchmarks comparing: Manual cloning, Reflection fallback, Custom cloners.<br>2. Optimize: Allocation patterns, Map pre-sizing, Slice copying.<br>3. Avoid unnecessary interface{} conversions.<br>4. Output benchmark results clearly. |
+| **Category**     | **Details**                                                                                                                                                                                                                                                                                                                           |
+|------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Goal**         | Prove your design is legit and guide users on optimization                                                                                                                                                                                                                                                                            |
+| **Requirements** | 1. Write benchmarks comparing: Manual cloning, Reflection fallback, Custom cloners.<br>2. Optimize: Allocation patterns, Map pre-sizing, Slice copying.<br>3. Avoid unnecessary interface{} conversions.<br>4. Output benchmark results clearly with `benchstat` integration.<br>5. Add `just` recipes for easy benchmark management. |
 
 ---
 
 # 🚀 PHASE 7 — Developer Experience (Polish)
 
-| **Category**     | **Details**                                                                                                                                                                                                         |
-|------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Goal**         | Make it usable, not just powerful                                                                                                                                                                                   |
-| **Requirements** | 1. Provide clean API: `doppel.Clone(obj)`, `doppel.CloneWithOptions(obj, opts)`, `doppel.NewRegistry()`.<br>2. Add: Documentation, Usage examples, README.<br>3. Ensure: Minimal boilerplate, Clear error messages. |
+| **Category**     | **Details**                                                                                                                                                                                                                                                                                                                                     |
+|------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Goal**         | Make it usable, not just powerful                                                                                                                                                                                                                                                                                                               |
+| **Requirements** | 1. Provide clean API: `doppel.Clone(obj)`, `doppel.CloneWithOptions(obj, opts)`, `doppel.NewRegistry()`.<br>2. Add: Documentation, Usage examples, README, godoc comments.<br>3. Ensure: Minimal boilerplate, Clear error messages, IDE-friendly autocomplete.<br>4. Consider: CLI tool for generating `Clone()` stubs from struct definitions. |

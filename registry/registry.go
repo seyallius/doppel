@@ -1,14 +1,19 @@
 // Package registry. registry - implements a thread-safe, type-keyed store of Cloner[T] values.
 //
-// Reflection is used in this package exclusively for type identification — as the
-// key in the internal map. It is never used to read field values, traverse struct
-// layouts, or perform any kind of dynamic copying. All actual cloning is delegated
-// to the core.Cloner[T] the caller registered.
+// Reflection is used in this package exclusively for two purposes:
+//  1. Deriving a stable map key from T (typeKeyFor).
+//  2. Wrapping a stored Cloner[T] as a reflect-level function (LookupAny), so the
+//     reflection engine in engine/ can consult registered cloners during graph traversal
+//     without knowing T at compile time.
 //
-// Lookup priority inside doppel.CloneWithRegistry:
+// Actual cloning is always delegated to the core.Cloner[T] the caller registered —
+// no field traversal, no struct layout inspection, no dynamic value copying happens here.
 //
-//  1. Registered core.Cloner[T] — fastest; skips even the SelfClonable interface check.
-//  2. core.SelfClonable[T] — used when no registration exists for T.
+// Lookup priority inside doppel.CloneWithRegistry (Phase 2+4):
+//
+//  1. Registered Cloner[T] — fastest; skips SelfClonable and reflection entirely.
+//  2. core.SelfClonable[T] — fallback when no registration exists for T.
+//  3. Reflection engine    — final fallback introduced in Phase 4 (replaces ErrNoCloner).
 //
 // Typical setup (once at startup, safe to share across goroutines thereafter):
 //
@@ -113,6 +118,44 @@ func (r *Registry) Len() int {
 	defer r.mu.RUnlock()
 
 	return len(r.typeCloners)
+}
+
+// LookupAny returns a reflect-level clone function for the given reflect.Type.
+//
+// It is the bridge between the type-safe generic registry and the reflection
+// engine in engine/, which operates at reflect.Value level without knowing T
+// at compile time. The engine calls this method to check whether a registered
+// Cloner[T] exists for a type it encounters during graph traversal.
+//
+// The returned function accepts a reflect.Value of the registered type and
+// returns a reflect.Value of the same type (or an error). The internal type
+// assertion is always safe because Register[T] guarantees the stored value is
+// core.Cloner[T] under the key for T.
+//
+// Returns (nil, false) when no Cloner is registered for t.
+// Safe for concurrent use.
+func (r *Registry) LookupAny(t reflect.Type) (func(reflect.Value) (reflect.Value, error), bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	raw, found := r.typeCloners[t]
+	if !found {
+		return nil, false
+	}
+
+	// Wrap the stored core.Cloner[T] (whose concrete type is unknown here) as a
+	// reflect-level function by calling its Clone method through reflect.Value.
+	clonerVal := reflect.ValueOf(raw)
+	cloneMethod := clonerVal.MethodByName("Clone")
+
+	return func(src reflect.Value) (reflect.Value, error) {
+		results := cloneMethod.Call([]reflect.Value{src})
+		errResult := results[1]
+		if !errResult.IsNil() {
+			return reflect.Value{}, errResult.Interface().(error)
+		}
+		return results[0], nil
+	}, true
 }
 
 // -------------------------------------------- Internal Helpers --------------------------------------------

@@ -47,3 +47,6 @@ go.work.sum
 .idea
 .git
 bin
+coverage.out
+bench.txt
+benchstat.txt

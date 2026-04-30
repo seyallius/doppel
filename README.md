@@ -36,7 +36,7 @@ copying decision is visible in code.
     - [Step 5 — External Cloner (no SelfClonable)](#step-5--external-cloner-no-selfclonable)
     - [Step 6 — Conditional / filtered cloning](#step-6--conditional--filtered-cloning)
     - [Step 7 — Cloner registry (Phase 2)](#step-7--cloner-registry-phase-2)
-    - [Step 8 — Reflection fallback usage (Phase 4)](#step-8--reflection-fallback-usage-phase-4)
+    - [Step 8 — Reflection fallback with cycle policies (Phase 4+5)](#step-8--reflection-fallback-with-cycle-policies-phase-45)
 - [Error Handling](#error-handling)
 - [Nil Safety Contract](#nil-safety-contract)
 - [Struct Tag Directives](#struct-tag-directives)
@@ -60,12 +60,12 @@ it comes with real costs:
 
 `doppel` inverts the priority order:
 
-| Priority | Strategy                                         | When used                                                  |
-|----------|--------------------------------------------------|------------------------------------------------------------|
-| 1        | **Manual clone** (your `Clone()` method)         | Always, by default — fastest path                          |
-| 2        | **External Cloner[T]** (via `CloneWith`)         | When clone logic needs injected context                    |
+| Priority | Strategy                                 | When used                                      |
+|----------|------------------------------------------|------------------------------------------------|
+| 1        | **Manual clone** (your `Clone()` method) | Always, by default — fastest path              |
+| 2        | **External Cloner[T]** (via `CloneWith`) | When clone logic needs injected context        |
 | 3        | **Registry Cloner[T]** (via `CloneWithRegistry`) | When you want type-level override without modifying source |
-| 4        | **Reflection fallback** (`engine.Engine`)        | Phase 4 — only when none of the above exist                |
+| 4        | **Reflection fallback** (`engine.Engine`) | Phase 4 — only when none of the above exist    |
 
 In Phase 1, reflection is not present at all. Every copy decision is written explicitly by you, composed of small
 generic helpers. Reflection is now available as a **controlled fallback** in Phase 4 — never the default, always the
@@ -130,9 +130,9 @@ github.com/seyallius/doppel/
 │   └── registry.go    Registry, New, Register[T], Lookup[T],
 │                      Deregister[T], Has[T], LookupAny (bridge)
 │
-└── engine/            ← Phase 4
-    └── engine.go      Engine, New, Clone, TypeLookup interface
-                       Reflection-based fallback with cycle safety
+└── engine/            ← Phase 4+5
+    ├── engine.go      Engine, New, NewWithOptions, Clone, TypeLookup interface
+    └── cycle.go       CyclePolicy, Options, CycleError — configurable cycle handling
 ```
 
 **Dependency graph** (acyclic, no circular imports):
@@ -190,8 +190,8 @@ itself.
 ### Identity helpers
 
 ```go
-manual.Identity[T](src T) (T, error)   // for use with CloneSlice / CloneMap / ClonePointer
-manual.IdentityValue[T](src T) T       // for use with CloneSliceOf / CloneMapOf / ClonePointerOf
+manual.Identity[T](src T) (T, error)      // for use with CloneSlice / CloneMap / ClonePointer
+manual.IdentityValue[T](src T) T          // for use with CloneSliceOf / CloneMapOf / ClonePointerOf
 ```
 
 For primitive Go types (`bool`, all integer and float types, `string`, `complex64/128`), a direct assignment is already
@@ -250,8 +250,6 @@ func MustCloneWith[T any](src T, cloner core.Cloner[T]) T
 
 Like `CloneWith`, but panics on error.
 
----
-
 ### doppel.CloneWithRegistry
 
 ```go
@@ -261,8 +259,7 @@ func CloneWithRegistry[T any](src T, reg *registry.Registry) (T, error)
 Produces a deep copy of `src` by walking the following priority chain:
 
 1. **Registered `Cloner[T]`** — if `reg` contains a cloner for type T, it is called. This is the fastest path.
-2. **`core.SelfClonable[T]` fallback** — if T implements `SelfClonable[T]`, its `Clone()` method is called. All existing
-   `SelfClonable` types work without registration.
+2. **`core.SelfClonable[T]` fallback** — if T implements `SelfClonable[T]`, its `Clone()` method is called. All existing `SelfClonable` types work without registration.
 3. **`core.ErrNoCloner`** — returned when neither strategy is available.
 
 Reflection is used only inside the registry for type key derivation — never for field access or value copying.
@@ -273,8 +270,6 @@ registry.Register(reg, core.NewFuncCloner(cloneAddress))
 
 cloned, err := doppel.CloneWithRegistry(addr, reg)
 ```
-
----
 
 ### manual.CloneSlice / CloneSliceOf
 
@@ -301,8 +296,6 @@ tags := manual.CloneSliceOf(u.Tags, manual.IdentityValue[string])
 ```
 
 **Nil contract:** a nil `src` returns `(nil, nil)`. An empty (non-nil) `src` returns a fresh empty slice, never nil.
-
----
 
 ### manual.CloneMap / CloneMapOf
 
@@ -335,8 +328,6 @@ active, err := manual.CloneMap(allUsers, func(u User) (User, error) {
 
 **Nil contract:** a nil `src` returns `(nil, nil)`. An empty (non-nil) `src` returns a fresh empty map.
 
----
-
 ### manual.ClonePointer / ClonePointerOf
 
 ```go
@@ -367,9 +358,31 @@ label, err := manual.ClonePointer(u.Label, manual.Identity[string])
 // Priority chain: Registered Cloner[T] → SelfClonable[T] → engine (reflection)
 type Engine struct { /* unexported */ }
 
-// New creates an Engine. Pass a *registry.Registry (or any TypeLookup) to have
-// the engine consult registered Cloner[T]s at every node of the value graph.
+// Options configures an Engine at construction time.
+type Options struct {
+    CyclePolicy CyclePolicy  // zero value = PreserveShared
+}
+
+// CyclePolicy controls how Engine handles cyclic and shared pointer references.
+type CyclePolicy int
+
+const (
+    PreserveShared CyclePolicy = iota  // default: reproduce exact graph topology
+    BreakCycles                         // break back-edges → nil, acyclic output
+    ErrorOnCycle                        // return *CycleError on any back-edge
+)
+
+// CycleError is returned when CyclePolicy is ErrorOnCycle and a cycle is detected.
+type CycleError struct {
+    Addr     uintptr  // pointer address where cycle detected
+    TypeName string   // reflect.Type.String() for debugging
+}
+
+// New creates an Engine with default options (PreserveShared cycle policy).
 func New(lookup TypeLookup) *Engine
+
+// NewWithOptions creates an Engine with explicitly configured options.
+func NewWithOptions(lookup TypeLookup, opts Options) *Engine
 
 // Clone deep-copies src and returns a reflect.Value of the same type.
 func (e *Engine) Clone(src reflect.Value) (reflect.Value, error)
@@ -384,8 +397,8 @@ The reflection engine is **never the default** — it is consulted only when:
 
 - ✅ Kind-specific cloning: `Ptr`, `Struct`, `Slice`, `Map`, `Array`, `Interface`, primitives
 - ✅ Struct tag support: `doppel:"-"` (skip), `doppel:"shallow"` (share backing)
-- ✅ Cycle safety: `visited` map prevents infinite recursion on cyclic graphs
-- ✅ Shared reference preservation: if two pointers point to same allocation, clone does too
+- ✅ Configurable cycle handling via `CyclePolicy` (Phase 5)
+- ✅ Shared reference preservation under `PreserveShared`
 - ✅ Nil-safety: preserves `nil` vs `empty` distinction for slices/maps/pointers
 - ✅ Error context: wraps failures with field-path via `core.WrapError`
 - ✅ Concurrency: all mutable state is per-call; `Engine` is safe for concurrent use
@@ -397,21 +410,22 @@ The reflection engine is **never the default** — it is consulted only when:
 - ❌ Interface values cloned via concrete type; dynamic dispatch preserved
 
 ```go
-// Example: Using the reflection fallback for a third-party type
-type ThirdParty struct {
-    Data map[string][]int
+// Example: Using the reflection fallback with BreakCycles policy
+type Node struct {
+    Value int
+    Next  *Node
 }
 
-src := ThirdParty{Data: map[string][]int{"x": {1, 2, 3}}}
+// Build a self-loop: n → n
+n := &Node{Value: 42}
+n.Next = n
 
-// Create engine with nil lookup — falls through to pure reflection
-eng := engine.New(nil)
-clonedVal, err := eng.Clone(reflect.ValueOf(src))
-if err != nil {
-    log.Fatal(err)
-}
-cloned := clonedVal.Interface().(ThirdParty)
-// cloned is now an independent deep copy ✨
+// Use BreakCycles to produce an acyclic clone safe for JSON encoding
+eng := engine.NewWithOptions(nil, engine.Options{
+    CyclePolicy: engine.BreakCycles,
+})
+clonedVal, err := eng.Clone(reflect.ValueOf(n))
+// clonedVal.(*Node).Next == nil  ← cycle broken, safe to marshal
 ```
 
 ---
@@ -618,7 +632,7 @@ goroutines.
 reg := registry.New()
 
 // Register a custom cloner for Address
-registry.Register(reg, core.NewFuncCloner(func (src Address) (Address, error) {
+registry.Register(reg, core.NewFuncCloner(func(src Address) (Address, error) {
     return Address{City: strings.ToUpper(src.City)}, nil // transform on clone
 }))
 
@@ -632,42 +646,43 @@ cloned, err := doppel.CloneWithRegistry(addr, reg)
 
 ---
 
-### Step 8 — Reflection fallback usage
+### Step 8 — Reflection fallback with cycle policies
 
 When you have a type with no manual clone and no registered cloner, use the reflection engine as a safe fallback.
+Configure cycle handling via `engine.Options`:
 
 ```go
-// For prototyping or legacy integration where manual Clone() isn't feasible yet:
-type LegacyType struct {
-    Data map[string][]int
-    Meta interface{}
+type GraphNode struct {
+    ID    int
+    Links []*GraphNode  // may contain cycles
 }
 
-src := LegacyType{
-    Data: map[string][]int{"x": {1, 2, 3}},
-    Meta: "some metadata",
-}
+src := &GraphNode{ID: 1}
+src.Links = []*GraphNode{src}  // self-referential cycle
 
-// Option A: Pure reflection (no registry)
-eng := engine.New(nil)
-clonedVal, err := eng.Clone(reflect.ValueOf(src))
+// Option A: PreserveShared (default) — reproduce exact topology
+eng1 := engine.New(nil)  // or NewWithOptions(nil, Options{CyclePolicy: PreserveShared})
+cloned1, _ := eng1.Clone(reflect.ValueOf(src))
+// cloned1.(*GraphNode).Links[0] == cloned1  ← cycle preserved
 
-// Option B: Reflection + registry integration (recommended)
-// The engine will consult registered cloners at every graph node
-reg := registry.New()
-registry.Register(reg, core.NewFuncCloner(cloneCustomType))
-eng := engine.New(reg)
-clonedVal, err := eng.Clone(reflect.ValueOf(src))
+// Option B: BreakCycles — produce acyclic output for serialization
+eng2 := engine.NewWithOptions(nil, engine.Options{
+    CyclePolicy: engine.BreakCycles,
+})
+cloned2, _ := eng2.Clone(reflect.ValueOf(src))
+// cloned2.(*GraphNode).Links[0] == nil  ← cycle broken, safe for JSON
 
-if err != nil {
-    log.Fatal(err)
-}
-cloned := clonedVal.Interface().(LegacyType)
+// Option C: ErrorOnCycle — strict validation during development
+eng3 := engine.NewWithOptions(nil, engine.Options{
+    CyclePolicy: engine.ErrorOnCycle,
+})
+_, err := eng3.Clone(reflect.ValueOf(src))
+// err.(*engine.CycleError) → "cycle detected at 0x... (type *GraphNode)"
 ```
 
 > 💡 **Pro Tip**: Prefer manual `Clone()` implementations for performance-critical paths. Use the reflection fallback
 > for prototyping, legacy integration, or when you need "just works" behavior without boilerplate. Benchmarks show
-> manual cloning is ~5-10× faster than reflection.
+> manual cloning is ~3-6× faster than reflection.
 
 ---
 
@@ -694,6 +709,15 @@ if err != nil {
 
 For program initialization and tests where a clone failure is always a bug, use `MustClone` / `MustCloneWith` to
 panic-on-error rather than propagating the error manually.
+
+The reflection engine may also return `*engine.CycleError` when `CyclePolicy` is `ErrorOnCycle`:
+
+```go
+_, err := eng.Clone(reflect.ValueOf(cyclicData))
+if cycleErr, ok := err.(*engine.CycleError); ok {
+    log.Printf("cycle at 0x%x (%s)", cycleErr.Addr, cycleErr.TypeName)
+}
+```
 
 ---
 
@@ -722,7 +746,7 @@ The `engine.Engine` respects the following `doppel` struct tags for fine-grained
 type Example struct {
     SkipMe    string   `doppel:"-"`       // ← skipped; clone gets zero value
     ShareMe   []string `doppel:"shallow"` // ← shallow copy; shares backing array
-    DeepClone string                      // ← default: deep copy recursively
+    DeepClone string   // ← default: deep copy recursively
 }
 ```
 
@@ -779,7 +803,6 @@ Indicative results on **11th Gen Intel(R) Core(TM) i5-11400H @ 2.70GHz** (your n
 | `UserLargeMap`   | 29.26µ ± 0%    | 99.41µ ± 4%        | **~3.4×** | 53.64Ki       | 101.4Ki           | 10                 | 2,016                  |
 
 **Key takeaways:**
-
 - 🚀 Manual cloning is **3-6× faster** than reflection-based cloning across all test cases
 - 🧠 Manual cloning uses **~40-95% fewer allocations**, especially noticeable with large maps
 - ⚡ The gap grows with complexity — nested structs and large collections benefit most from explicit cloning
@@ -812,7 +835,7 @@ BenchmarkEngine_ShallowBaseline      975549486   1.229 ns/op      0 B/op     0 a
 | **2** | Cloner registry — per-type override, thread-safe lookup        | ✅ Complete |
 | **3** | Field-level cloners — per-field override and conditional logic | 🔜 Next    |
 | **4** | Reflection fallback — automatic clone for unregistered types   | ✅ Complete |
-| **5** | Cycle detection — safe cloning of pointer graphs               | 🔜 Next    |
+| **5** | Cycle detection — configurable policies for cyclic graphs      | ✅ Complete |
 | **6** | Benchmarking suite — cross-strategy comparison                 | 📋 Planned |
 | **7** | API polish — `CloneWithOptions`, JSON-tag filtering, docs      | 📋 Planned |
 
@@ -860,12 +883,16 @@ BenchmarkEngine_ShallowBaseline      975549486   1.229 ns/op      0 B/op     0 a
 
 ---
 
-# 🚀 PHASE 5 — Cycle Detection (Advanced) 🔜 NEXT
+# 🚀 PHASE 5 — Cycle Detection (Configurable Policies) ✅ COMPLETE
 
-| **Category**     | **Details**                                                                                                                                                                                                                                                                                                                                                           |
-|------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Goal**         | Strengthen cycle detection semantics and add explicit cycle-handling options                                                                                                                                                                                                                                                                                          |
-| **Requirements** | 1. Enhance `visited` map to track full graph topology.<br>2. Add `CyclePolicy` enum: `PreserveShared`, `BreakCycles`, `ErrorOnCycle`.<br>3. Ensure: No infinite recursion, Graph integrity maintained per policy.<br>4. Add tests: Self-referencing structs, Mutual references, Diamond graphs.<br>5. Document trade-offs: memory overhead vs correctness guarantees. |
+| **Category**       | **Details**                                                                                                                                                                                                                        |
+|--------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Goal**           | Provide configurable cycle-handling strategies for pointer graphs                                                                                                                                                                  |
+| **Policies**       | ✅ `PreserveShared` (default): reproduce exact topology, deduplicate shared refs<br>✅ `BreakCycles`: break back-edges → nil, produce acyclic output<br>✅ `ErrorOnCycle`: return `*CycleError` on any cycle for strict validation    |
+| **API**            | `engine.Options{CyclePolicy: engine.BreakCycles}`<br>`engine.NewWithOptions(lookup, opts)`<br>`engine.CycleError{Addr, TypeName}`                                                                                                  |
+| **When to Use**    | - `PreserveShared`: general-purpose cloning, faithful reproduction<br>- `BreakCycles`: serialization (JSON/YAML), tree conversion, avoiding infinite loops<br>- `ErrorOnCycle`: development-time assertions, data model validation |
+| **Implementation** | ✅ `cloneState.inStack` for DFS cycle tracking<br>✅ Policy-aware `clonePointer` and `cloneMap`<br>✅ Backward-compatible: `New()` defaults to `PreserveShared`                                                                       |
+| **Tests**          | ✅ Self-loop preservation/breaking/error<br>✅ Two-node cycle handling<br>✅ Shared reference deduplication under `PreserveShared`                                                                                                    |
 
 ---
 

@@ -25,12 +25,13 @@
 //	doppel:"-"       Skip the field entirely; the clone receives the zero value.
 //	doppel:"shallow" Assign without recursing; the clone shares the field's value.
 //
-// # Cycle safety
+// # Cycle and sharing policy (Phase 5)
 //
-// Pointer and map addresses are recorded in a per-clone visited map, preventing
-// infinite recursion on cyclic graphs. Shared sub-graph structure is also preserved:
-// if two pointers in the original point to the same allocation, the clone will too.
-// Full cycle-detection semantics are tightened further in Phase 5.
+// The engine supports three CyclePolicy modes (see cycle.go):
+//
+//	PreserveShared (default) — shared and cyclic pointers are reproduced faithfully.
+//	BreakCycles              — back-edges are replaced with nil; acyclic output.
+//	ErrorOnCycle             — returns *CycleError immediately on any back-edge.
 //
 // # Concurrency
 //
@@ -69,36 +70,60 @@ type TypeLookup interface {
 
 // Engine performs reflection-based deep copying of arbitrary Go values.
 //
-// Construct one with New and call Clone for each top-level copy operation.
+// Construct one with New (default options) or NewWithOptions (custom CyclePolicy).
 // A single Engine instance is safe for concurrent use because all mutable
 // state lives in per-call cloneState values.
 type Engine struct {
 	lookup TypeLookup // nil if no registry was provided
+	opts   Options    // immutable after construction
 }
 
 // cloneState holds per-clone-call mutable state, keeping Engine itself stateless.
+//
+// The visited map serves different roles depending on the active CyclePolicy:
+//
+//	PreserveShared — maps address → already-cloned reflect.Value (deduplication + cycle guard).
+//	BreakCycles    — maps address → struct{} (sentinel: "currently in the call stack").
+//	ErrorOnCycle   — maps address → struct{} (sentinel: "currently in the call stack").
 type cloneState struct {
 	engine  *Engine
-	visited map[uintptr]reflect.Value // ptr/map address → cloned value (cycle + sharing guard)
+	visited map[uintptr]reflect.Value // PreserveShared: addr → clone; others: addr → zero Value as sentinel
+	inStack map[uintptr]bool          // BreakCycles / ErrorOnCycle: tracks the live DFS stack
 }
 
 // -------------------------------------------- Constructor(s) --------------------------------------------
 
-// New creates an Engine. Pass a *registry.Registry (or any TypeLookup) to have
-// the engine consult registered Cloner[T]s at every node of the value graph.
+// New creates an Engine with default options (PreserveShared cycle policy).
+// Pass a *registry.Registry (or any TypeLookup) to have the engine consult
+// registered Cloner[T]s at every node of the value graph.
 // Pass nil to rely only on SelfClonable detection and pure reflection.
+//
+// New is fully backward-compatible with the Phase 4 engine.New signature.
 func New(lookup TypeLookup) *Engine {
-	return &Engine{lookup: lookup}
+	return NewWithOptions(lookup, Options{CyclePolicy: PreserveShared})
+}
+
+// NewWithOptions creates an Engine with explicitly configured options.
+// Use this when you need a non-default CyclePolicy:
+//
+//	eng := engine.NewWithOptions(reg, engine.Options{CyclePolicy: engine.BreakCycles})
+//	eng := engine.NewWithOptions(nil, engine.Options{CyclePolicy: engine.ErrorOnCycle})
+func NewWithOptions(lookup TypeLookup, opts Options) *Engine {
+	return &Engine{lookup: lookup, opts: opts}
 }
 
 // -------------------------------------------- Public API --------------------------------------------
 
 // Clone deep-copies src and returns a reflect.Value of the same type.
 // It is the entry point for a single top-level clone operation.
+//
+// The behavior on cyclic or shared pointer references depends on the
+// CyclePolicy configured via NewWithOptions (default: PreserveShared).
 func (e *Engine) Clone(src reflect.Value) (reflect.Value, error) {
 	state := &cloneState{
 		engine:  e,
 		visited: make(map[uintptr]reflect.Value),
+		inStack: make(map[uintptr]bool),
 	}
 	return state.clone(src)
 }
@@ -166,31 +191,93 @@ func (s *cloneState) cloneByKind(src reflect.Value) (reflect.Value, error) {
 	}
 }
 
-// clonePointer deep-copies a pointer value, preserving shared sub-graph structure.
+// clonePointer deep-copies a pointer value.
 //
-// The cloned pointer is registered in s.visited BEFORE recursing so that back-edges
-// in cyclic graphs resolve to the already-allocated clone rather than looping.
+// The exact behavior for visited addresses is governed by the active CyclePolicy:
+//
+//   - PreserveShared: register clone BEFORE recursing so back-edges return the
+//     already-allocated clone, reproducing cycles and shared references faithfully.
+//
+//   - BreakCycles: track the live DFS stack in inStack; if this address is on the
+//     stack we are in a cycle — return nil for this back-edge and continue.
+//     After recursing, remove the address from inStack so sibling references can
+//     still be cloned independently.
+//
+//   - ErrorOnCycle: same stack tracking as BreakCycles, but return *CycleError
+//     instead of nil when a back-edge is detected.
 func (s *cloneState) clonePointer(src reflect.Value) (reflect.Value, error) {
 	if src.IsNil() {
 		return reflect.Zero(src.Type()), nil
 	}
 
 	addr := src.Pointer()
-	if alreadyCloned, seen := s.visited[addr]; seen {
-		return alreadyCloned, nil
-	}
 
-	dst := reflect.New(src.Type().Elem())
-	s.visited[addr] = dst // register before recursing to break potential cycles
+	switch s.engine.opts.CyclePolicy {
+	case PreserveShared:
+		// Return the already-cloned value if we have seen this address before.
+		// This handles both cycles (back-edges) and shared sub-graph references.
+		if alreadyCloned, seen := s.visited[addr]; seen {
+			return alreadyCloned, nil
+		}
 
-	cloned, err := s.clone(src.Elem())
-	if err != nil {
-		return reflect.Value{}, core.WrapError(src.Type().String(), err)
+		dst := reflect.New(src.Type().Elem())
+		s.visited[addr] = dst // register BEFORE recursing to break cycles
+
+		cloned, err := s.clone(src.Elem())
+		if err != nil {
+			return reflect.Value{}, core.WrapError(src.Type().String(), err)
+		}
+		if cloned.IsValid() {
+			dst.Elem().Set(cloned)
+		}
+		return dst, nil
+
+	case BreakCycles:
+		// If the address is on the current DFS call stack → cycle → return nil stub.
+		if s.inStack[addr] {
+			return reflect.Zero(src.Type()), nil
+		}
+
+		s.inStack[addr] = true
+		defer delete(s.inStack, addr) // pop after recursion so siblings clone independently
+
+		dst := reflect.New(src.Type().Elem())
+		cloned, err := s.clone(src.Elem())
+		if err != nil {
+			return reflect.Value{}, core.WrapError(src.Type().String(), err)
+		}
+		if cloned.IsValid() {
+			dst.Elem().Set(cloned)
+		}
+		return dst, nil
+
+	case ErrorOnCycle:
+		// If the address is on the current DFS call stack → cycle → return error.
+		if s.inStack[addr] {
+			return reflect.Value{}, &CycleError{
+				Addr:     addr,
+				TypeName: src.Type().String(),
+			}
+		}
+
+		s.inStack[addr] = true
+		defer delete(s.inStack, addr)
+
+		dst := reflect.New(src.Type().Elem())
+		cloned, err := s.clone(src.Elem())
+		if err != nil {
+			return reflect.Value{}, err // preserve CycleError without re-wrapping
+		}
+		if cloned.IsValid() {
+			dst.Elem().Set(cloned)
+		}
+		return dst, nil
+
+	default:
+		// Unreachable with the current enum, but keeps the compiler happy and
+		// future-proofs against new policy values that haven't been wired up yet.
+		return reflect.Value{}, fmt.Errorf("doppel/engine: unknown CyclePolicy %d", s.engine.opts.CyclePolicy)
 	}
-	if cloned.IsValid() {
-		dst.Elem().Set(cloned)
-	}
-	return dst, nil
 }
 
 // cloneStruct deep-copies a struct value, field by field.
@@ -261,14 +348,30 @@ func (s *cloneState) cloneSlice(src reflect.Value) (reflect.Value, error) {
 }
 
 // cloneMap deep-copies a map, preserving the nil-vs-empty distinction.
-// The cloned map is registered in s.visited to handle self-referential maps.
+// Under PreserveShared the cloned map is registered in s.visited to handle
+// self-referential maps. Under BreakCycles/ErrorOnCycle we use inStack instead.
 func (s *cloneState) cloneMap(src reflect.Value) (reflect.Value, error) {
 	if src.IsNil() {
 		return reflect.Zero(src.Type()), nil
 	}
 
 	dst := reflect.MakeMapWithSize(src.Type(), src.Len())
-	s.visited[src.Pointer()] = dst // register before iterating to break self-referential cycles
+
+	switch s.engine.opts.CyclePolicy {
+	case PreserveShared:
+		s.visited[src.Pointer()] = dst // register before iterating to handle self-referential maps
+
+	case BreakCycles, ErrorOnCycle:
+		addr := src.Pointer()
+		if s.inStack[addr] {
+			if s.engine.opts.CyclePolicy == ErrorOnCycle {
+				return reflect.Value{}, &CycleError{Addr: addr, TypeName: src.Type().String()}
+			}
+			return reflect.Zero(src.Type()), nil
+		}
+		s.inStack[addr] = true
+		defer delete(s.inStack, addr)
+	}
 
 	for _, key := range src.MapKeys() {
 		clonedKey, err := s.clone(key)

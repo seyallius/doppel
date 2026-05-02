@@ -258,7 +258,7 @@ func TestEngine_Interface(t *testing.T) {
 	t.Parallel()
 
 	type holder struct {
-		Anything interface{}
+		Anything any
 	}
 
 	testCases := []struct {
@@ -600,7 +600,7 @@ func TestEngine_DeepNestedComposition(t *testing.T) {
 		Name     string
 		Items    []inner
 		Lookup   map[string]*inner
-		Metadata map[string]interface{}
+		Metadata map[string]any
 	}
 
 	src := outer{
@@ -612,7 +612,7 @@ func TestEngine_DeepNestedComposition(t *testing.T) {
 		Lookup: map[string]*inner{
 			"x": {Tag: "x-inner", Count: 10},
 		},
-		Metadata: map[string]interface{}{
+		Metadata: map[string]any{
 			"version": 3,
 			"labels":  []string{"a", "b"},
 		},

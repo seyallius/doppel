@@ -42,23 +42,6 @@ func main() {
 
 ---
 
-## 📚 Documentation Map
-
-| Section                 | Description                             | Link                                                     |
-|-------------------------|-----------------------------------------|----------------------------------------------------------|
-| 🗺️ Index               | Full documentation table of contents    | [docs/INDEX.md](./docs/INDEX.md)                         |
-| 🎯 Getting Started      | Why doppel, installation, quick example | [docs/getting-started.md](./docs/getting-started.md)     |
-| 💭 Philosophy           | Design principles & priority chain      | [docs/philosophy.md](./docs/philosophy.md)               |
-| 🧠 Core Concepts        | `Cloner[T]`, `SelfClonable[T]`, helpers | [docs/core-concepts.md](./docs/core-concepts.md)         |
-| 🔧 API Reference        | Complete public API documentation       | [docs/api-reference.md](./docs/api-reference.md)         |
-| 🛠️ Usage Guide         | Step-by-step cloning patterns (1-8)     | [docs/usage-guide.md](./docs/usage-guide.md)             |
-| ⚙️ Advanced             | Error handling, nil safety, struct tags | [docs/advanced.md](./docs/advanced.md)                   |
-| 🔍 Reflection Engine    | Fallback engine & cycle policies        | [docs/reflection-engine.md](./docs/reflection-engine.md) |
-| 🧪 Testing & Benchmarks | Test commands, performance results      | [docs/testing.md](./docs/testing.md)                     |
-| 🗓️ Roadmap             | Phase breakdown & future plans          | [docs/roadmap.md](./docs/roadmap.md)                     |
-
----
-
 ## 🤝 Contributing
 
 1. Read [docs/INDEX.md](./docs/INDEX.md) for architecture overview

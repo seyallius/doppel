@@ -122,6 +122,23 @@ mod-update:
     go mod tidy
 
 # ----------------------------------------------------------------
+# Docs
+# ----------------------------------------------------------------
+
+# Generate navigation HTML for documentation markdown files
+[group('Docs')]
+generate-nav:
+    @echo "🔄 Generating documentation navigation..."
+    @go run scripts/generate-nav.go
+    @echo "✨ Navigation updated! Commit the changes."
+
+# Check if navigation HTML needs to be updated
+[group('Docs')]
+check-nav: generate-nav
+    @git diff --exit-code docs/*.md || (echo "❌ Navigation changes detected. Run 'just generate-nav' and commit." && exit 1)
+    @echo "✅ Documentation navigation is up to date."
+
+# ----------------------------------------------------------------
 # Git & Version Control
 # ----------------------------------------------------------------
 

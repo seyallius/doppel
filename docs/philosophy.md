@@ -7,12 +7,11 @@
 ## Core Principles
 
 ### 1. Manual Cloning is the Default
-
-No reflection is used anywhere in Phase 1 — not even for type identification. Generic helpers (`CloneSlice`, `CloneMap`,
+By default, no reflection is used — not even for type identification. Generic helpers (`CloneSlice`, `CloneMap`,
 `ClonePointer`) are resolved entirely at compile time.
 
-✅ You write the `Clone()` method  
-✅ `doppel` gives you concise, safe helpers  
+✅ You write the `Clone()` method
+✅ `doppel` gives you concise, safe helpers
 ✅ Every copy decision is visible in your code
 
 ### 2. Explicit Over Magic
@@ -20,8 +19,8 @@ No reflection is used anywhere in Phase 1 — not even for type identification. 
 You write the `Clone()` method. `doppel` provides helpers to make it concise and safe, but the logic is always yours to
 read and reason about.
 
-❌ No hidden orchestration  
-❌ No global state  
+❌ No hidden orchestration
+❌ No global state
 ✅ Full control, full visibility
 
 ### 3. Composable, Not Monolithic
@@ -44,10 +43,7 @@ func (o *Order) Clone() (*Order, error) {
 ```
 
 ### 4. Open for Extension, Closed for Modification
-
-The `Cloner[T]` interface is the single extension point. Registering a custom cloner (Phase 2), adding per-field logic (
-Phase 3), or opting into reflection (Phase 4) are all additive — nothing in Phase 1 changes.
-
+The `Cloner[T]` interface is the single extension point. Registering custom cloners, adding per-field logic, or opting into reflection are all additive — the core manual cloning foundation never changes.
 ### 5. Errors Carry Context
 
 Every helper wraps failures with a field-path string (`core.WrapError`) so that when a clone fails deep inside a nested
@@ -91,9 +87,9 @@ performance trade-offs documented.
 
 ## Anti-Patterns to Avoid
 
-❌ Using reflection fallback for hot-path types without benchmarking  
-❌ Skipping error wrapping — lose context on failures  
-❌ Forgetting nil safety contracts — preserve nil vs empty distinctions  
+❌ Using reflection fallback for hot-path types without benchmarking
+❌ Skipping error wrapping — lose context on failures
+❌ Forgetting nil safety contracts — preserve nil vs empty distinctions
 ❌ Overusing `MustClone` in production — prefer explicit error handling
 
 > 💡 **Golden Rule**: If you can write the clone logic explicitly, do it. Reflection is a safety net, not a crutch. (◕‿◕)✧

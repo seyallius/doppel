@@ -137,7 +137,6 @@ func (u *User) Clone() (*User, error) {
 
 // Call site:
 cloned, err := doppel.Clone(user)
-
 ```
 
 ✅ Composition is key — each type owns its clone logic.
@@ -181,9 +180,8 @@ aboveThreshold, err := manual.CloneMap(rawScores, func(score int) (int, error) {
     if score < passingGrade {
         return 0, nil // zero-out failing scores
     }
-    return score, nil
-})
-
+        return score, nil
+    })
 // Clone a slice, skipping nil pointers entirely.
 validUsers, err := manual.CloneSlice(allUsers, func(u *User) (*User, error) {
     if u == nil {
@@ -192,13 +190,10 @@ validUsers, err := manual.CloneSlice(allUsers, func(u *User) (*User, error) {
     return u.Clone()
 })
 ```
-
-✅ This is the preview of field-level customization (Phase 3).
-
+✅ This is the preview of field-level customization.
 ---
 
-## Step 7 — Cloner Registry (Phase 2)
-
+## Step 7 — Cloner Registry
 Register custom clone logic for types at application startup. The registry is thread-safe.
 
 ```go
@@ -221,9 +216,7 @@ cloned, err := doppel.CloneWithRegistry(addr, reg)
 ✅ Registries enable centralized clone config without modifying types.
 
 ---
-
-## Step 8 — Reflection Fallback with Cycle Policies (Phase 4+5)
-
+## Step 8 — Reflection Fallback with Cycle Policies
 When you have a type with no manual clone and no registered cloner, use the reflection engine as a safe fallback.
 
 ```go

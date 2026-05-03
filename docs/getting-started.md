@@ -23,9 +23,7 @@ it comes with real costs:
 | 2        | **External `Cloner[T]`** (via `CloneWith`)         | When clone logic needs injected context         |
 | 3        | **Registry `Cloner[T]`** (via `CloneWithRegistry`) | Type-level override without modifying source    |
 | 4        | **Reflection fallback** (`engine.Engine`)          | Last resort — only when none of the above exist |
-
-In Phase 1, reflection is not present at all. Every copy decision is written explicitly by you. ✧◝(⁰▿⁰)◜✧
-
+By default, reflection is not used at all. Every copy decision is written explicitly by you. ✧◝(⁰▿⁰)◜✧
 ---
 
 ## Installation
@@ -45,54 +43,54 @@ go get github.com/seyallius/doppel
 package main
 
 import (
-	"fmt"
-	"github.com/seyallius/doppel"
-	"github.com/seyallius/doppel/manual"
-	"github.com/seyallius/doppel/core"
+    "fmt"
+    "github.com/seyallius/doppel"
+    "github.com/seyallius/doppel/manual"
+    "github.com/seyallius/doppel/core"
 )
 
 // User represents a simple domain entity.
 type User struct {
-	ID   int64
-	Name string
-	Tags []string
+    ID   int64
+    Name string
+    Tags []string
 }
 
 // Clone implements SelfClonable[*User] for explicit deep copying.
 // Returns an independent copy with no shared references.
 func (u *User) Clone() (*User, error) {
-	if u == nil {
-		return nil, nil
-	}
-	// Clone slice of primitives using Identity helper
-	tags, err := manual.CloneSlice(u.Tags, manual.Identity[string])
-	if err != nil {
-		return nil, core.WrapError("User.Tags", err)
-	}
-	return &User{
-		ID:   u.ID,
-		Name: u.Name,
-		Tags: tags, // independent slice
-	}, nil
+    if u == nil {
+        return nil, nil
+    }
+    // Clone slice of primitives using Identity helper
+    tags, err := manual.CloneSlice(u.Tags, manual.Identity[string])
+    if err != nil {
+        return nil, core.WrapError("User.Tags", err)
+    }
+    return &User{
+        ID:   u.ID,
+        Name: u.Name,
+        Tags: tags, // independent slice
+    }, nil
 }
 
 func main() {
-	original := &User{
-		ID:   1,
-		Name: "Alice",
-		Tags: []string{"admin", "dev"},
-	}
-
-	// Deep clone using doppel's public API
-	cloned, err := doppel.Clone(original)
-	if err != nil {
-		panic(err)
-	}
-
-	// Verify independence
-	cloned.Tags = append(cloned.Tags, "modified")
-	fmt.Println("Original tags:", original.Tags) // [admin dev]
-	fmt.Println("Cloned tags:  ", cloned.Tags)   // [admin dev modified] ✧
+    original := &User{
+        ID:   1,
+        Name: "Alice",
+        Tags: []string{"admin", "dev"},
+    }
+    
+    // Deep clone using doppel's public API
+    cloned, err := doppel.Clone(original)
+    if err != nil {
+        panic(err)
+    }
+    
+    // Verify independence
+    cloned.Tags = append(cloned.Tags, "modified")
+    fmt.Println("Original tags:", original.Tags) // [admin dev]
+    fmt.Println("Cloned tags:  ", cloned.Tags)   // [admin dev modified] ✧
 }
 ```
 

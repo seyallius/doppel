@@ -6,15 +6,16 @@
 
 ## Phase Summary
 
-| Phase | Focus                                                          | Status         |
-|-------|----------------------------------------------------------------|----------------|
-| **1** | Manual deep copy foundation (no reflection)                    | ✅ Complete     |
-| **2** | Cloner registry — per-type override, thread-safe lookup        | ✅ Complete     |
-| **3** | Field-level cloners — per-field override and conditional logic | 🔜 Next        |
-| **4** | Reflection fallback — automatic clone for unregistered types   | ✅ Complete     |
-| **5** | Cycle detection — configurable policies for cyclic graphs      | ✅ Complete     |
-| **6** | Benchmarking suite — cross-strategy comparison                 | ✅ Complete (?) |
-| **7** | API polish — `CloneWithOptions`, JSON-tag filtering, docs      | 📋 Planned     |
+| Phase | Focus                                                               | Status         |
+|-------|---------------------------------------------------------------------|----------------|
+| **1** | Manual deep copy foundation (no reflection)                         | ✅ Complete     |
+| **2** | Cloner registry — per-type override, thread-safe lookup             | ✅ Complete     |
+| **3** | Field-level cloners — per-field override and conditional logic      | 🔜 Next        |
+| **4** | Reflection fallback — automatic clone for unregistered types        | ✅ Complete     |
+| **5** | Cycle detection — configurable policies for cyclic graphs           | ✅ Complete     |
+| **6** | Benchmarking suite — cross-strategy comparison                      | ✅ Complete (?) |
+| **7** | API polish — `CloneWithOptions`, JSON-tag filtering, docs           | 📋 Planned     |
+| **8** | The `doppel-gen` CLI tool will generate the manual `Clone()` method | 📋 Planned     |
 
 ---
 
@@ -127,6 +128,18 @@ engine.CycleError{Addr, TypeName}
 - CLI tool for generating `Clone()` stubs from struct definitions
 - Enhanced godoc examples and IDE-friendly autocomplete
 
+### Phase 8 — Code Generation CLI 📋
+- `doppel-gen` CLI tool: `go generate`-based codegen for `Clone()` methods
+- Generates code using `manual.*` helpers → zero-reflection, max performance
+- `doppel:"manual"` struct tag: protects hand-written clone logic from overwrite
+- `doppel:"autogen"` tag: opt-in fields for auto-generation
+- Separate binary (`cmd/doppel-gen`), never a runtime dependency
+- Integration with `go generate` workflow:
+  ```go
+  //go:generate doppel-gen -type=User,Order,Product
+  type User struct { ... }
+  ```
+  
 ---
 
 ## Contributing to the Roadmap

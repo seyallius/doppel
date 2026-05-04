@@ -14,6 +14,7 @@
 //   - Allocating new slices, maps, arrays, and pointers.
 //   - Detecting whether a value implements the SelfClonable contract (method lookup).
 //   - Dispatching to registered Cloner[T]s at every graph node (via TypeLookup).
+//   - Dispatching to registered field-level Cloners at each struct field (via FieldLookup).
 //
 // Unexported struct fields are skipped. To include unexported fields implement
 // core.SelfClonable[T] on the type — that remains Phase 1 manual territory.
@@ -22,8 +23,27 @@
 //
 // The engine respects the following doppel struct tags:
 //
-//	doppel:"-"       Skip the field entirely; the clone receives the zero value.
-//	doppel:"shallow" Assign without recursing; the clone shares the field's value.
+//	doppel:"-"        Skip the field entirely; the clone receives the zero value.
+//	doppel:"shallow"  Assign without recursing; the clone shares the field's value.
+//	doppel:"readonly" Same as shallow; communicates that the field is conceptually immutable.
+//	doppel:"clone"    Require a registered field Cloner; errors if none is found.
+//	doppel:"deep"     Explicit deep copy (same as default, for documentation purposes).
+//
+// # Field-level cloners (Phase 3)
+//
+// When a FieldLookup provider is available (typically *registry.Registry), the engine
+// checks for registered field-level cloners before falling through to the default
+// reflection path. This enables "default deep copy + selective override" workflows
+// where most fields are cloned automatically by reflection, but specific fields use
+// custom clone logic registered via registry.RegisterField.
+//
+// Per-field priority inside cloneStruct:
+//
+//  1. Struct tag directive (-, shallow, readonly, clone)
+//  2. Registered field Cloner (auto-discovered)
+//  3. Registered type Cloner (for the field's type)
+//  4. SelfClonable on the field value
+//  5. Reflection fallback
 //
 // # Cycle and sharing policy (Phase 5)
 //
@@ -68,14 +88,35 @@ type TypeLookup interface {
 	LookupAny(t reflect.Type) (func(reflect.Value) (reflect.Value, error), bool)
 }
 
+// FieldLookup is implemented by *registry.Registry. It allows the engine to
+// consult registered field-level Cloners during struct cloning without importing
+// the registry package, keeping the dependency graph acyclic.
+//
+// *registry.Registry satisfies FieldLookup automatically via its LookupAnyField
+// method — no explicit declaration is needed.
+//
+// This interface is consulted by cloneStruct before falling through to the
+// default per-field reflection path. When a field Cloner is registered for a
+// given (structType, fieldName) pair, the engine uses it instead of reflecting
+// into the field value, enabling "default deep copy + selective override"
+// workflows without writing full SelfClonable implementations.
+type FieldLookup interface {
+	// LookupAnyField returns a reflect-level clone function for the given
+	// struct type and field name. The returned function accepts a reflect.Value
+	// of the field's type and returns a reflect.Value of the same type (or an error).
+	// Returns (nil, false) when no field Cloner is registered.
+	LookupAnyField(structType reflect.Type, fieldName string) (func(reflect.Value) (reflect.Value, error), bool)
+}
+
 // Engine performs reflection-based deep copying of arbitrary Go values.
 //
 // Construct one with New (default options) or NewWithOptions (custom CyclePolicy).
 // A single Engine instance is safe for concurrent use because all mutable
 // state lives in per-call cloneState values.
 type Engine struct {
-	lookup TypeLookup // nil if no registry was provided
-	opts   Options    // immutable after construction
+	lookup      TypeLookup  // nil if no registry was provided
+	fieldLookup FieldLookup // nil if no field-level lookup was provided
+	opts        Options     // immutable after construction
 }
 
 // cloneState holds per-clone-call mutable state, keeping Engine itself stateless.
@@ -98,6 +139,9 @@ type cloneState struct {
 // registered Cloner[T]s at every node of the value graph.
 // Pass nil to rely only on SelfClonable detection and pure reflection.
 //
+// If the provided TypeLookup also implements FieldLookup, the engine will
+// automatically consult field-level cloners during struct cloning.
+//
 // New is fully backward-compatible with the Phase 4 engine.New signature.
 func New(lookup TypeLookup) *Engine {
 	return NewWithOptions(lookup, Options{CyclePolicy: PreserveShared})
@@ -108,8 +152,18 @@ func New(lookup TypeLookup) *Engine {
 //
 //	eng := engine.NewWithOptions(reg, engine.Options{CyclePolicy: engine.BreakCycles})
 //	eng := engine.NewWithOptions(nil, engine.Options{CyclePolicy: engine.ErrorOnCycle})
+//
+// If the provided TypeLookup also implements FieldLookup, the engine will
+// automatically consult field-level cloners during struct cloning.
 func NewWithOptions(lookup TypeLookup, opts Options) *Engine {
-	return &Engine{lookup: lookup, opts: opts}
+	// Auto-detect FieldLookup: if the TypeLookup also implements FieldLookup
+	// (as *registry.Registry does), wire it up automatically.
+	var fl FieldLookup
+	if detected, ok := lookup.(FieldLookup); ok {
+		fl = detected
+	}
+	// Note: fl may be nil if lookup is nil or doesn't implement FieldLookup.
+	return &Engine{lookup: lookup, fieldLookup: fl, opts: opts}
 }
 
 // -------------------------------------------- Public API --------------------------------------------
@@ -287,8 +341,19 @@ func (s *cloneState) clonePointer(src reflect.Value) (reflect.Value, error) {
 //
 // Supported doppel struct tags:
 //
-//	doppel:"-"       Skip the field; clone receives the zero value.
-//	doppel:"shallow" Assign without recursing; clone shares the field's value.
+//	doppel:"-"        Skip the field; clone receives the zero value.
+//	doppel:"shallow"  Assign without recursing; clone shares the field's value.
+//	doppel:"readonly" Same as shallow; communicates that the field is conceptually immutable.
+//	doppel:"clone"    Require a registered field Cloner; errors if none is found.
+//	doppel:"deep"     Explicit deep copy (same as default, for documentation purposes).
+//
+// Per-field priority when cloning:
+//
+//  1. Struct tag directive (doppel:"-", doppel:"shallow", etc.)
+//  2. Registered field Cloner (if a FieldLookup provider is available)
+//  3. Registered type Cloner (via the registry's TypeLookup)
+//  4. SelfClonable on the field value
+//  5. Reflection fallback
 func (s *cloneState) cloneStruct(src reflect.Value) (reflect.Value, error) {
 	dst := reflect.New(src.Type()).Elem()
 	srcType := src.Type()
@@ -298,15 +363,55 @@ func (s *cloneState) cloneStruct(src reflect.Value) (reflect.Value, error) {
 		srcField := src.Field(fieldIdx)
 		dstField := dst.Field(fieldIdx)
 
+		tag := fieldMeta.Tag.Get(tagKey)
+
 		// Apply doppel struct tags before anything else.
-		switch fieldMeta.Tag.Get(tagKey) {
+		switch tag {
 		case "-":
 			continue // skip; dstField stays at zero value
-		case "shallow":
+
+		case "shallow", "readonly":
+			// Shallow copy: assign without recursing.
+			// "readonly" has the same behavior as "shallow" but communicates
+			// that the field is conceptually immutable and safe to share.
 			if fieldMeta.IsExported() {
 				dstField.Set(srcField)
 			}
 			continue
+
+		case "clone":
+			// Require a registered field Cloner for this field.
+			// This tag makes the dependency explicit: the clone will fail
+			// at runtime if no field cloner is registered, catching
+			// configuration errors early.
+			if s.engine.fieldLookup == nil {
+				return reflect.Value{}, fmt.Errorf(
+					"doppel: field %s.%s tagged doppel:\"clone\" but no FieldLookup provider is available",
+					srcType.Name(), fieldMeta.Name,
+				)
+			}
+			cloneFn, found := s.engine.fieldLookup.LookupAnyField(srcType, fieldMeta.Name)
+			if !found {
+				return reflect.Value{}, fmt.Errorf(
+					"doppel: field %s.%s tagged doppel:\"clone\" but no field cloner is registered",
+					srcType.Name(), fieldMeta.Name,
+				)
+			}
+			cloned, err := cloneFn(srcField)
+			if err != nil {
+				return reflect.Value{}, core.WrapError(
+					fmt.Sprintf("%s.%s", srcType.Name(), fieldMeta.Name),
+					err,
+				)
+			}
+			if cloned.IsValid() {
+				dstField.Set(cloned)
+			}
+			continue
+
+		case "deep":
+			// Explicit deep copy marker — same behavior as default (no tag),
+			// but documents the intent clearly. Fall through to default logic.
 		}
 
 		// Unexported fields: skip with no error. Document the limitation clearly.
@@ -314,6 +419,27 @@ func (s *cloneState) cloneStruct(src reflect.Value) (reflect.Value, error) {
 			continue
 		}
 
+		// Check for registered field cloner (auto-discovery).
+		// If a field cloner is registered for this (structType, fieldName) pair,
+		// use it instead of the default reflection path. This is the core of
+		// Phase 3: "default deep copy + selective override."
+		if s.engine.fieldLookup != nil {
+			if cloneFn, found := s.engine.fieldLookup.LookupAnyField(srcType, fieldMeta.Name); found {
+				cloned, err := cloneFn(srcField)
+				if err != nil {
+					return reflect.Value{}, core.WrapError(
+						fmt.Sprintf("%s.%s", srcType.Name(), fieldMeta.Name),
+						err,
+					)
+				}
+				if cloned.IsValid() {
+					dstField.Set(cloned)
+				}
+				continue
+			}
+		}
+
+		// Default: recursive clone (handles type cloner, SelfClonable, reflection).
 		cloned, err := s.clone(srcField)
 		if err != nil {
 			return reflect.Value{}, core.WrapError(

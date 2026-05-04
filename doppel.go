@@ -35,7 +35,18 @@
 //   - registry.Lookup[T]     	— retrieve the Cloner[T] for type T.
 //   - registry.Deregister[T] 	— remove the Cloner for type T.
 //   - registry.Has[T]        	— report whether a Cloner is registered for T.
-//   - doppel.CloneWithRegistry — dispatches via registry → SelfClonable → error.
+//   - doppel.CloneWithRegistry — dispatches via registry → SelfClonable → ErrNoCloner.
+//
+// # Phase 3 — Field-Level Customization
+//
+// Field-level cloners provide fine-grained control over individual struct fields.
+// Instead of writing a full Clone() method for a 200-field struct, register cloners
+// for only the fields that need custom logic. The reflection engine handles the rest.
+//   - registry.RegisterField[T, F]  — store a Cloner[F] for a specific field of T.
+//   - registry.LookupField[T, F]    — retrieve the field Cloner.
+//   - registry.HasField[T]          — check if a field Cloner exists.
+//   - registry.DeregisterField[T]   — remove a field Cloner.
+//   - doppel.CloneDeep              — full priority chain including reflection.
 //
 // # Quick start
 //
@@ -50,10 +61,18 @@
 //
 //	// 2. Call doppel.Clone.
 //	cloned, err := doppel.Clone(user)
+//
+//	// 3. Or use CloneDeep for "default deep copy + selective override":
+//	reg := registry.New()
+//	registry.RegisterField[BigStruct, *Address](reg, "HomeAddr", core.NewFuncCloner(cloneAddr))
+//	cloned, err := doppel.CloneDeep(bigStruct, reg)
 package doppel
 
 import (
+	"reflect"
+
 	"github.com/seyallius/doppel/core"
+	"github.com/seyallius/doppel/engine"
 	"github.com/seyallius/doppel/registry"
 )
 
@@ -108,9 +127,9 @@ func MustCloneWith[T any](src T, cloner core.Cloner[T]) T {
 //     Clone() method is called. This means all existing SelfClonable types
 //     work with CloneWithRegistry out of the box, even without registration.
 //
-//  3. registry.ErrNoCloner — returned when neither strategy is available.
-//     This is an explicit signal to either register a Cloner or implement
-//     SelfClonable on the type. (Reflection fallback arrives in Phase 4.)
+//  3. core.ErrNoCloner — returned when neither strategy is available.
+//     This is an explicit signal to either register a Cloner, implement
+//     SelfClonable, or use CloneDeep for automatic reflection fallback.
 //
 // Reflection is used only inside the registry for type key derivation —
 // never for field access or value traversal.
@@ -128,4 +147,75 @@ func CloneWithRegistry[T any](src T, reg *registry.Registry) (T, error) {
 
 	var zero T
 	return zero, core.ErrNoCloner
+}
+
+// CloneDeep produces a deep copy of src by walking the full priority chain:
+//
+//  1. Registered Cloner[T] — if reg contains a Cloner for type T, it is used.
+//     This is the fastest path and gives you full control over the clone logic.
+//
+//  2. core.SelfClonable[T] — if T implements SelfClonable[T], its Clone()
+//     method is called. All existing SelfClonable types work out of the box.
+//
+//  3. Reflection engine — the engine recursively clones the value, consulting
+//     registered field-level cloners (via registry.RegisterField) before
+//     falling through to default reflection for each struct field.
+//
+// CloneDeep is the entry point for the "default deep copy + selective override"
+// workflow introduced in Phase 3. It is the recommended API when you have a
+// struct with many fields but only need custom clone logic for a few:
+//
+//	reg := registry.New()
+//	registry.RegisterField[BigStruct, *Address](reg, "HomeAddr", core.NewFuncCloner(cloneAddr))
+//	registry.RegisterField[BigStruct, []string](reg, "Tags", core.NewFuncCloner(
+//	    func(src []string) ([]string, error) { return append([]string{}, src...), nil },
+//	))
+//	cloned, err := doppel.CloneDeep(bigStruct, reg)
+//
+// Pass nil for reg to use pure reflection without any registered cloners.
+//
+// The engine respects doppel struct tags (see engine package documentation for details).
+func CloneDeep[T any](src T, reg *registry.Registry) (T, error) {
+	// 1. Registry fast path — type-level cloner.
+	if reg != nil {
+		if cloner, found := registry.Lookup[T](reg); found {
+			return cloner.Clone(src)
+		}
+	}
+
+	// 2. SelfClonable fallback.
+	if selfClonable, ok := any(src).(core.SelfClonable[T]); ok {
+		return selfClonable.Clone()
+	}
+
+	// 3. Reflection engine — reg may be nil; engine handles nil TypeLookup gracefully.
+	var lookup engine.TypeLookup
+	if reg != nil {
+		lookup = reg // *registry.Registry implements TypeLookup (+ FieldLookup)
+	}
+
+	eng := engine.New(lookup)
+	clonedVal, err := eng.Clone(reflect.ValueOf(src))
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+
+	if !clonedVal.IsValid() {
+		var zero T
+		return zero, nil
+	}
+
+	return clonedVal.Interface().(T), nil
+}
+
+// MustCloneDeep is like CloneDeep but panics instead of returning an error.
+// Intended for use in tests and program initialization, where a cloning
+// failure is always a programming error rather than a recoverable condition.
+func MustCloneDeep[T any](src T, reg *registry.Registry) T {
+	result, err := CloneDeep(src, reg)
+	if err != nil {
+		panic("doppel.MustCloneDeep: " + err.Error())
+	}
+	return result
 }

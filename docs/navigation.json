@@ -30,70 +30,22 @@
       "title": "Manual Helpers",
       "prev": "self-clonable.md",
       "prevLabel": "SelfClonable",
-      "next": "registry.md",
-      "nextLabel": "Registry"
-    },
-    {
-      "file": "registry.md",
-      "title": "Cloner Registry",
-      "prev": "manual-helpers.md",
-      "prevLabel": "Manual Helpers",
-      "next": "field-cloners.md",
-      "nextLabel": "Field Cloners"
-    },
-    {
-      "file": "field-cloners.md",
-      "title": "Field-Level Cloners",
-      "prev": "registry.md",
-      "prevLabel": "Registry",
-      "next": "reflection-engine.md",
-      "nextLabel": "Reflection Engine"
-    },
-    {
-      "file": "reflection-engine.md",
-      "title": "Reflection Engine",
-      "prev": "field-cloners.md",
-      "prevLabel": "Field Cloners",
       "next": "struct-tags.md",
       "nextLabel": "Struct Tags"
     },
     {
       "file": "struct-tags.md",
       "title": "Struct Tags",
-      "prev": "reflection-engine.md",
-      "prevLabel": "Reflection Engine",
-      "next": "cycle-policy.md",
-      "nextLabel": "Cycle Policy"
-    },
-    {
-      "file": "cycle-policy.md",
-      "title": "Cycle & Sharing Policy",
-      "prev": "struct-tags.md",
-      "prevLabel": "Struct Tags",
-      "next": "error-handling.md",
-      "nextLabel": "Error Handling"
-    },
-    {
-      "file": "error-handling.md",
-      "title": "Error Handling",
-      "prev": "cycle-policy.md",
-      "prevLabel": "Cycle Policy",
-      "next": "patterns.md",
-      "nextLabel": "Patterns"
-    },
-    {
-      "file": "patterns.md",
-      "title": "Patterns & Best Practices",
-      "prev": "error-handling.md",
-      "prevLabel": "Error Handling",
+      "prev": "manual-helpers.md",
+      "prevLabel": "Manual Helpers",
       "next": "benchmarks.md",
       "nextLabel": "Benchmarks"
     },
     {
       "file": "benchmarks.md",
       "title": "Benchmarks",
-      "prev": "patterns.md",
-      "prevLabel": "Patterns",
+      "prev": "struct-tags.md",
+      "prevLabel": "Struct Tags",
       "next": "api-reference.md",
       "nextLabel": "API Reference"
     },

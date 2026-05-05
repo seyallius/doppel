@@ -64,7 +64,7 @@ func (u *User) Clone() (*User, error) {
         ID:     u.ID,
         Name:   u.Name,
         Active: u.Active,
-        Tags:   tags,
+        Tags:    tags,
         Scores: scores,
     }, nil
 }
@@ -100,68 +100,85 @@ func main() {
 
 ---
 
-## Quick reference: choosing the right API
+## Quick reference: choosing the right helper
 
-| You have...                  | You want...                          | Use                                    |
-|------------------------------|--------------------------------------|----------------------------------------|
-| A type with `Clone()` method | Just clone it                        | `doppel.Clone(value)`                  |
-| A type without `Clone()`     | Clone with a custom function         | `doppel.CloneWith(value, cloner)`      |
-| A type without `Clone()`     | Clone with a registry lookup         | `doppel.CloneWithRegistry(value, reg)` |
-| Any type                     | Full deep copy (reflection fallback) | `doppel.CloneDeep(value, reg)`         |
-| A large struct               | Override only a few fields           | `CloneDeep` + `registry.RegisterField` |
+| You have...                      | Use                                               |
+|----------------------------------|----------------------------------------------------|
+| A pointer field                   | `manual.ClonePointer(u.Addr, cloneAddr)`         |
+| A slice of primitives            | `manual.CloneSlice(u.Tags, manual.Identity[string])` |
+| A slice of structs               | `manual.CloneSlice(u.Items, item.Clone)`           |
+| A map with primitive values       | `manual.CloneMap(u.Scores, manual.Identity[int])`   |
+| A map with struct values          | `manual.CloneMap(u.Lookup, cloneValue)`           |
+| A primitive field                 | Direct assignment (no helper needed)               |
 
 ---
 
-## Must variants
+## MustClone
 
-Every clone function has a `Must` variant that panics instead of returning an error. Use these in tests and initialization code where a cloning failure is always a programming error:
+`MustClone` panics instead of returning an error. Use this in tests and initialization code where a cloning failure is always a programming error:
 
 ```go
 cloned := doppel.MustClone(original)
-cloned := doppel.MustCloneWith(original, cloner)
-cloned := doppel.MustCloneDeep(original, reg)
 ```
+
+---
+
+## Struct tags (future generator)
+
+You can annotate struct fields with `doppel:"..."` tags. These are currently informational only — a future code generator will read them to automatically emit `Clone()` implementations:
+
+```go
+type User struct {
+    Name    string
+    Secret  string           `doppel:"-"`       // skip in clone
+    Config  map[string]string `doppel:"readonly"` // shared (not deep-copied)
+    Address *Address         `doppel:"clone"`    // custom clone logic
+    Tags    []string         `doppel:"deep"`     // explicit deep copy (default)
+}
+```
+
+See [Struct Tags](struct-tags.md) for the full reference.
 
 ---
 
 ## What's next?
 
 - **[SelfClonable Interface](self-clonable.md)** — Deep dive into the `Clone()` method pattern, including nested structs and pointer fields.
-- **[Manual Helpers](manual-helpers.md)** — Learn about `CloneSlice`, `CloneMap`, `ClonePointer`, and `Identity`.
-
-<!-- Navigation (AUTO-GENERATED - DO NOT EDIT) -->
+- **[Manual Helpers](manual-helpers.md)** — Detailed reference for `CloneSlice`, `CloneMap`, `ClonePointer`, and `Identity`.
 
 ---
 
 <div style="margin-top: 3rem; margin-bottom: 1rem; padding: 2rem 1.5rem; border-top: 2px solid #1e293b; border-radius: 12px; background: linear-gradient(145deg, #0f172a, #0b111c);">
     <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #e1e4e8; text-align: center; color: #586069; font-size: 0.85rem;">
-        📚 doppel Documentation • Getting Started
+        doppel Documentation &bull; Getting Started
     </div>
     <div style="display: flex; justify-content: space-between; align-items: stretch; gap: 1.5rem; flex-wrap: wrap; margin-top: 1.5rem;">
-        <div style="flex: 1; min-width: 200px;"><a href="INDEX.md" style="display: flex; align-items: center; gap: 0.75rem; padding: 1rem 1.5rem; background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; line-height: 1.4; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);">
-                <span style="font-size: 1.2rem; font-weight: 700; line-height: 1;">←</span>
+        <div style="flex: 1; min-width: 200px;">
+            <a href="INDEX.md" style="display: flex; align-items: center; gap: 0.75rem; padding: 1rem 1.5rem; background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; line-height: 1.4; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);">
+                <span style="font-size: 1.2rem; font-weight: 700; line-height: 1;">&#8592;</span>
                 <span style="display: flex; flex-direction: column; line-height: 1.3;">
                     <span style="font-size: 0.7rem; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Previous</span>
                     <span style="font-size: 1rem; font-weight: 600;">Home</span>
                 </span>
-            </a></div>
+            </a>
+        </div>
         <div style="flex: 1; min-width: 200px; display: flex; justify-content: center; align-items: center;">
             <a href="INDEX.md" style="display: flex; align-items: center; justify-content: center; gap: 0.75rem; padding: 1rem 1.5rem; background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; line-height: 1.4; box-shadow: 0 2px 4px rgba(139, 92, 246, 0.3); text-align: center;">
-                <span style="font-size: 1.2rem; font-weight: 700; line-height: 1;">⌂</span>
+                <span style="font-size: 1.2rem; font-weight: 700; line-height: 1;">&#8962;</span>
                 <span style="display: flex; flex-direction: column; line-height: 1.3;">
                     <span style="font-size: 0.7rem; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Return to</span>
                     <span style="font-size: 1rem; font-weight: 600;">Index</span>
                 </span>
             </a>
         </div>
-        <div style="flex: 1; min-width: 200px; display: flex; justify-content: flex-end;"><a href="self-clonable.md" style="display: flex; align-items: center; justify-content: flex-end; gap: 0.75rem; padding: 1rem 1.5rem; background: linear-gradient(135deg, #10b981, #047857); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; line-height: 1.4; text-align: right; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);">
+        <div style="flex: 1; min-width: 200px; display: flex; justify-content: flex-end;">
+            <a href="self-clonable.md" style="display: flex; align-items: center; justify-content: flex-end; gap: 0.75rem; padding: 1rem 1.5rem; background: linear-gradient(135deg, #10b981, #047857); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; line-height: 1.4; text-align: right; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);">
                 <span style="display: flex; flex-direction: column; line-height: 1.3;">
                     <span style="font-size: 0.7rem; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Next</span>
                     <span style="font-size: 1rem; font-weight: 600;">SelfClonable</span>
                 </span>
-                <span style="font-size: 1.2rem; font-weight: 700; line-height: 1;">→</span>
-            </a></div>
+                <span style="font-size: 1.2rem; font-weight: 700; line-height: 1;">&#8594;</span>
+            </a>
+        </div>
     </div>
 </div>
-<!-- /Navigation -->
-

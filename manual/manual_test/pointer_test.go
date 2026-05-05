@@ -15,7 +15,7 @@ func TestClonePointer_Int(t *testing.T) {
 	testCases := []struct {
 		name      string
 		src       *int
-		wantValue *int // nil means expect nil result
+		wantValue *int
 		wantErr   bool
 	}{
 		{
@@ -98,7 +98,6 @@ func TestClonePointer_Isolation(t *testing.T) {
 			src:    intPointer(7),
 			mutate: func(_ *int) {},
 			verify: func(t *testing.T, cloned *int) {
-				// The test fixture already re-clones below; we just check the address.
 				if cloned == nil {
 					t.Fatal("cloned pointer is nil")
 				}
@@ -180,43 +179,6 @@ func TestClonePointer_String(t *testing.T) {
 			}
 			if *got != *tc.wantValue {
 				t.Fatalf("got %q, want %q", *got, *tc.wantValue)
-			}
-		})
-	}
-}
-
-// --- ClonePointerOf — infallible value cloner --------------------
-
-func TestClonePointerOf(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name       string
-		src        *int
-		wantResult *int
-	}{
-		{name: "nil_returns_nil", src: nil, wantResult: nil},
-		{name: "value_copied", src: intPointer(77), wantResult: intPointer(77)},
-	}
-
-	for _, tc := range testCases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			got := manual.ClonePointerOf(tc.src, manual.IdentityValue[int])
-
-			if tc.wantResult == nil {
-				if got != nil {
-					t.Fatalf("expected nil, got %v", got)
-				}
-				return
-			}
-			if got == nil || *got != *tc.wantResult {
-				t.Fatalf("got %v, want %v", derefInt(got), derefInt(tc.wantResult))
-			}
-			if got == tc.src {
-				t.Error("ClonePointerOf returned the same pointer as src")
 			}
 		})
 	}

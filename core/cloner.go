@@ -5,14 +5,18 @@
 //   - Cloner[T]: external clone logic for types you don't own or need context for.
 //   - SelfClonable[T]: opt-in interface for types that manage their own deep-copy logic.
 //   - FuncCloner[T]: lightweight adapter to use plain functions as Cloner[T] implementations.
+//
+// TODO: Generator integration — a future code generator will emit SelfClonable[T]
+// implementations automatically from struct definitions and doppel tags.
+//
+//go:generate go run github.com/seyallius/doppel/cmd/doppelgen
 package core
 
 // -------------------------------------------- Types --------------------------------------------
 
 // Cloner is the central extension interface for doppel.
 // Any value that can produce a deep copy of a T satisfies Cloner[T].
-// It is the contract used throughout the registry (Phase 2) and the
-// field-level customization layer (Phase 3).
+// It is the contract used throughout the library for external clone logic.
 //
 // Implementations must:
 //   - Never return a value that shares any mutable memory with src.
@@ -34,8 +38,18 @@ type FuncCloner[T any] struct {
 // doppel.Clone can dispatch directly to it without an external Cloner.
 //
 // Choose SelfClonable when the type owns all the state it needs to copy.
-// When cloning requires external context (e.g. re-fetching a lazy field),
+// When cloning requires external context (e.g., re-fetching a lazy field),
 // implement Cloner[T] separately and keep the type itself unaware of cloning.
+//
+// Example:
+//
+//	func (u *User) Clone() (*User, error) {
+//	    tags, err := manual.CloneSlice(u.Tags, manual.Identity[string])
+//	    if err != nil {
+//	        return nil, core.WrapError("User.Tags", err)
+//	    }
+//	    return &User{ID: u.ID, Name: u.Name, Tags: tags}, nil
+//	}
 type SelfClonable[T any] interface {
 	Clone() (T, error)
 }

@@ -30,12 +30,12 @@ func TestClone_User_Pointer_Independence(t *testing.T) {
 	testCases := []struct {
 		name   string
 		mutate func(u *User)
-		check  func(t *testing.T, cloned *User, original *User)
+		check  func(t *testing.T, cloned *User)
 	}{
 		{
 			name:   "mutate_name_does_not_affect_clone",
 			mutate: func(u *User) { u.Name = "mutated" },
-			check: func(t *testing.T, cloned *User, _ *User) {
+			check: func(t *testing.T, cloned *User) {
 				if cloned.Name == "mutated" {
 					t.Error("clone Name was affected by original mutation")
 				}
@@ -44,7 +44,7 @@ func TestClone_User_Pointer_Independence(t *testing.T) {
 		{
 			name:   "mutate_nested_address_does_not_affect_clone",
 			mutate: func(u *User) { u.Contact.Address.Street = "999 Evil Ave" },
-			check: func(t *testing.T, cloned *User, _ *User) {
+			check: func(t *testing.T, cloned *User) {
 				if cloned.Contact.Address.Street == "999 Evil Ave" {
 					t.Error("clone Address.Street was affected by original mutation")
 				}
@@ -53,7 +53,7 @@ func TestClone_User_Pointer_Independence(t *testing.T) {
 		{
 			name:   "mutate_tag_slice_does_not_affect_clone",
 			mutate: func(u *User) { u.Tags[0] = "mutated_tag" },
-			check: func(t *testing.T, cloned *User, _ *User) {
+			check: func(t *testing.T, cloned *User) {
 				if cloned.Tags[0] == "mutated_tag" {
 					t.Error("clone Tags[0] was affected by original mutation")
 				}
@@ -62,7 +62,7 @@ func TestClone_User_Pointer_Independence(t *testing.T) {
 		{
 			name:   "mutate_scores_map_does_not_affect_clone",
 			mutate: func(u *User) { u.Scores["math"] = 0 },
-			check: func(t *testing.T, cloned *User, _ *User) {
+			check: func(t *testing.T, cloned *User) {
 				if cloned.Scores["math"] == 0 {
 					t.Error("clone Scores[math] was affected by original mutation")
 				}
@@ -71,7 +71,7 @@ func TestClone_User_Pointer_Independence(t *testing.T) {
 		{
 			name:   "replace_address_pointer_does_not_affect_clone",
 			mutate: func(u *User) { u.Contact.Address = &Address{Street: "replaced"} },
-			check: func(t *testing.T, cloned *User, _ *User) {
+			check: func(t *testing.T, cloned *User) {
 				if cloned.Contact.Address.Street == "replaced" {
 					t.Error("clone Address was affected by pointer replacement in original")
 				}
@@ -89,7 +89,7 @@ func TestClone_User_Pointer_Independence(t *testing.T) {
 			requireNoError(t, err)
 
 			tc.mutate(original)
-			tc.check(t, cloned, original)
+			tc.check(t, cloned)
 		})
 	}
 }
@@ -110,7 +110,7 @@ func TestClone_User_NilFields(t *testing.T) {
 				Name: "Bob",
 				Contact: ContactInfo{
 					Email:   "bob@example.com",
-					Address: nil, // explicit nil
+					Address: nil,
 				},
 			},
 		},
@@ -119,7 +119,7 @@ func TestClone_User_NilFields(t *testing.T) {
 			original: &User{
 				ID:   3,
 				Name: "Carol",
-				Tags: nil, // nil slice preserved
+				Tags: nil,
 			},
 		},
 		{
@@ -127,7 +127,7 @@ func TestClone_User_NilFields(t *testing.T) {
 			original: &User{
 				ID:     4,
 				Name:   "Dave",
-				Scores: nil, // nil map preserved
+				Scores: nil,
 			},
 		},
 		{
@@ -231,43 +231,6 @@ func TestClone_Order_Independence(t *testing.T) {
 	}
 }
 
-// --- TestCloneWith — external Cloner[T] (non-SelfClonable type) --------------------
-
-func TestCloneWith(t *testing.T) {
-	t.Parallel()
-
-	// Address does not implement SelfClonable; use CloneWith + FuncCloner.
-	addressCloner := core.NewFuncCloner(cloneAddress)
-
-	testCases := []struct {
-		name     string
-		original Address
-	}{
-		{
-			name:     "zero_value",
-			original: Address{},
-		},
-		{
-			name:     "fully_populated",
-			original: Address{Street: "1 Infinite Loop", City: "Cupertino", State: "CA", Zip: "95014"},
-		},
-	}
-
-	for _, tc := range testCases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			cloned, err := doppel.CloneWith(tc.original, addressCloner)
-			requireNoError(t, err)
-
-			if cloned != tc.original {
-				t.Fatalf("clone mismatch:\ngot  %+v\nwant %+v", cloned, tc.original)
-			}
-		})
-	}
-}
-
 // --- TestMustClone --------------------
 
 func TestMustClone(t *testing.T) {
@@ -293,36 +256,6 @@ func TestMustClone(t *testing.T) {
 			}
 		}()
 		_ = doppel.MustClone(failingUser)
-	})
-}
-
-// --- TestMustCloneWith --------------------
-
-func TestMustCloneWith(t *testing.T) {
-	t.Parallel()
-
-	t.Run("returns_correct_clone", func(t *testing.T) {
-		t.Parallel()
-		cloner := core.NewFuncCloner(cloneAddress)
-		addr := Address{Street: "42 Answer St", City: "Meaning", State: "OF", Zip: "LIFE"}
-		cloned := doppel.MustCloneWith(addr, cloner)
-		if cloned != addr {
-			t.Fatalf("MustCloneWith result mismatch")
-		}
-	})
-
-	t.Run("panics_on_error", func(t *testing.T) {
-		t.Parallel()
-
-		errCloner := core.NewFuncCloner(func(a Address) (Address, error) {
-			return Address{}, errors.New("deliberate")
-		})
-		defer func() {
-			if recover() == nil {
-				t.Error("expected panic, got none")
-			}
-		}()
-		_ = doppel.MustCloneWith(Address{}, errCloner)
 	})
 }
 

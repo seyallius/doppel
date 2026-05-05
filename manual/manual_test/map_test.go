@@ -202,8 +202,6 @@ func TestCloneMap_ErrorPropagation(t *testing.T) {
 func TestCloneMap_ConditionalClone(t *testing.T) {
 	t.Parallel()
 
-	// Demonstrates the Phase 3 field-level use-case preview: the caller
-	// controls which values make it into the clone.
 	src := map[string]int{
 		"alpha": 10,
 		"beta":  3,
@@ -211,10 +209,9 @@ func TestCloneMap_ConditionalClone(t *testing.T) {
 		"delta": 1,
 	}
 
-	// Clone only entries where the value is >= 10 (copy or zero-out).
 	cloneVal := func(v int) (int, error) {
 		if v < 10 {
-			return 0, nil // zero-out below-threshold values
+			return 0, nil
 		}
 		return v, nil
 	}
@@ -227,53 +224,5 @@ func TestCloneMap_ConditionalClone(t *testing.T) {
 	want := map[string]int{"alpha": 10, "beta": 0, "gamma": 15, "delta": 0}
 	if !reflect.DeepEqual(cloned, want) {
 		t.Fatalf("conditional clone mismatch:\ngot  %v\nwant %v", cloned, want)
-	}
-}
-
-// --- CloneMapOf — infallible value cloner --------------------
-
-func TestCloneMapOf(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name       string
-		src        map[string]int
-		wantResult map[string]int
-		wantNil    bool
-	}{
-		{name: "nil_returns_nil", src: nil, wantNil: true},
-		{name: "empty_returns_empty", src: map[string]int{}, wantResult: map[string]int{}},
-		{name: "values_copied", src: map[string]int{"a": 1, "b": 2}, wantResult: map[string]int{"a": 1, "b": 2}},
-	}
-
-	for _, tc := range testCases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			got := manual.CloneMapOf(tc.src, manual.IdentityValue[int])
-
-			if tc.wantNil {
-				if got != nil {
-					t.Fatalf("expected nil, got %v", got)
-				}
-				return
-			}
-			if !reflect.DeepEqual(got, tc.wantResult) {
-				t.Fatalf("got %v, want %v", got, tc.wantResult)
-			}
-		})
-	}
-}
-
-func TestCloneMapOf_Independence(t *testing.T) {
-	t.Parallel()
-
-	src := map[string]int{"x": 1}
-	cloned := manual.CloneMapOf(src, manual.IdentityValue[int])
-
-	src["x"] = 999
-	if cloned["x"] == 999 {
-		t.Error("CloneMapOf clone shares storage with original")
 	}
 }

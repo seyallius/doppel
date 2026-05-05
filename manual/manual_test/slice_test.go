@@ -148,7 +148,7 @@ func TestCloneSlice_Independence(t *testing.T) {
 		{
 			name:   "append_to_original_does_not_grow_clone",
 			src:    []string{"a", "b"},
-			mutate: func(s []string) { _ = append(s, "c") }, // harmless but explicit
+			mutate: func(s []string) { _ = append(s, "c") },
 			check: func(t *testing.T, cloned []string) {
 				if len(cloned) != 2 {
 					t.Errorf("expected len 2, got %d", len(cloned))
@@ -208,53 +208,5 @@ func TestCloneSlice_ErrorContext(t *testing.T) {
 	errMsg := err.Error()
 	if !contains(errMsg, "2") {
 		t.Errorf("expected error message to contain index 2, got: %s", errMsg)
-	}
-}
-
-// --- CloneSliceOf — infallible element cloner --------------------
-
-func TestCloneSliceOf(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name       string
-		src        []string
-		wantResult []string
-		wantNil    bool
-	}{
-		{name: "nil_returns_nil", src: nil, wantNil: true},
-		{name: "empty_returns_empty", src: []string{}, wantResult: []string{}},
-		{name: "values_copied", src: []string{"x", "y", "z"}, wantResult: []string{"x", "y", "z"}},
-	}
-
-	for _, tc := range testCases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			got := manual.CloneSliceOf(tc.src, manual.IdentityValue[string])
-
-			if tc.wantNil {
-				if got != nil {
-					t.Fatalf("expected nil, got %v", got)
-				}
-				return
-			}
-			if !reflect.DeepEqual(got, tc.wantResult) {
-				t.Fatalf("got %v, want %v", got, tc.wantResult)
-			}
-		})
-	}
-}
-
-func TestCloneSliceOf_Independence(t *testing.T) {
-	t.Parallel()
-
-	src := []int{1, 2, 3}
-	cloned := manual.CloneSliceOf(src, manual.IdentityValue[int])
-
-	src[0] = 999
-	if cloned[0] == 999 {
-		t.Error("CloneSliceOf clone shares memory with original")
 	}
 }

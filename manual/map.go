@@ -1,17 +1,14 @@
-// Package manual. map - provides CloneMap[K,V] and CloneMapOf[K,V] — generic helpers
-// for creating independent deep copies of maps, cloning values while preserving comparable keys.
+// Package manual. map - provides CloneMap[K,V] — a generic helper for creating
+// independent deep copies of maps, cloning values while preserving comparable keys.
 //
 // Key behaviors:
-//   - Nil-safety: nil src → (nil, nil); empty non-nil src → fresh empty map (preserves nil/empty distinction).
+//   - Nil-safety: nil src → (nil, nil); empty non-nil src → fresh empty map.
 //   - Independence: cloned map is a new map[K]V; mutations to src never affect the clone.
 //   - Key handling: keys are comparable value types in Go and copied automatically; only values are cloned.
-//   - Error context: on failure, CloneMap returns an error annotated with the failing key.
+//   - Error context: on failure, returns an error annotated with the failing key.
 //
 // Choose CloneMap when value cloning can fail (e.g., nested structs).
-// Choose CloneMapOf for primitive value types or infallible copy logic using IdentityValue[V].
-//
-// Design note: If you need to transform keys during cloning, use a manual for-range loop —
-// this keeps the helper focused and avoids over-engineering the common case.
+// For primitive value types, pass manual.Identity[V] as the cloneVal function.
 package manual
 
 import "fmt"
@@ -23,9 +20,6 @@ import "fmt"
 // are value types, so they do not require their own clone step — they are
 // copied automatically during map iteration. CloneMap therefore only accepts
 // a value cloner, not a key cloner.
-//
-// If you genuinely need to transform keys during cloning (an uncommon need),
-// use a manual for-range loop instead.
 //
 // Nil-safety contract:
 //   - A nil src returns (nil, nil) — nil is preserved as nil.
@@ -49,26 +43,4 @@ func CloneMap[K comparable, V any](src map[K]V, cloneVal func(V) (V, error)) (ma
 	}
 
 	return dst, nil
-}
-
-// CloneMapOf creates an independent deep copy of src using a simple
-// (infallible) value cloner. It is the convenience sibling of CloneMap
-// for cases where cloning the value type cannot fail — typically primitive
-// value types paired with manual.IdentityValue:
-//
-//	counts := manual.CloneMapOf(u.Scores, manual.IdentityValue[int])
-//
-// A nil src returns nil; an empty src returns a fresh empty map.
-func CloneMapOf[K comparable, V any](src map[K]V, cloneVal func(V) V) map[K]V {
-	if src == nil {
-		return nil
-	}
-
-	dst := make(map[K]V, len(src))
-
-	for key, val := range src {
-		dst[key] = cloneVal(val)
-	}
-
-	return dst
 }

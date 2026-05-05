@@ -1,5 +1,5 @@
-// Package manual. pointer - provides ClonePointer[T] and ClonePointerOf[T] — generic helpers
-// for creating independent deep copies of pointer values, allocating fresh memory for the clone.
+// Package manual. pointer - provides ClonePointer[T] — a generic helper for creating
+// independent deep copies of pointer values, allocating fresh memory for the clone.
 //
 // Key behaviors:
 //   - Nil-safety: nil src → (nil, nil) without invoking the clone function.
@@ -7,7 +7,7 @@
 //   - Error propagation: ClonePointer wraps cloneVal errors with core.WrapError for contextual debugging.
 //
 // Choose ClonePointer when cloning the pointed-to value can fail (e.g., nested struct with validation).
-// Choose ClonePointerOf for primitive types or infallible copy logic using IdentityValue[T].
+// For primitive types, pass manual.Identity[T] as the cloneVal function.
 //
 // Typical usage inside a struct's Clone() method:
 //
@@ -27,13 +27,6 @@ import "github.com/seyallius/doppel/core"
 //
 // Nil-safety contract:
 //   - If src is nil, (nil, nil) is returned — nil is preserved without error.
-//
-// Typical usage inside a struct's Clone() method:
-//
-//	addr, err := manual.ClonePointer(u.Address, cloneAddress)
-//	if err != nil {
-//	    return nil, core.WrapError("User.Address", err)
-//	}
 func ClonePointer[T any](src *T, cloneVal func(T) (T, error)) (*T, error) {
 	if src == nil {
 		return nil, nil
@@ -48,23 +41,4 @@ func ClonePointer[T any](src *T, cloneVal func(T) (T, error)) (*T, error) {
 	*dst = cloned
 
 	return dst, nil
-}
-
-// ClonePointerOf creates an independent deep copy of the value that src points to
-// using a simple (infallible) value cloner. Use this when the pointed-to value's
-// clone function cannot fail — typically when cloneVal is IdentityValue[T] or a
-// handwritten no-error copy function:
-//
-//	label, err := manual.ClonePointerOf(u.Label, manual.IdentityValue[string])
-//
-// If src is nil, nil is returned.
-func ClonePointerOf[T any](src *T, cloneVal func(T) T) *T {
-	if src == nil {
-		return nil
-	}
-
-	dst := new(T)
-	*dst = cloneVal(*src)
-
-	return dst
 }

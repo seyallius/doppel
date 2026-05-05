@@ -1,15 +1,15 @@
-// Package manual. slice - provides CloneSlice[T] and CloneSliceOf[T] — generic helpers
-// for creating independent deep copies of slices with fallible or infallible element cloners.
+// Package manual. slice - provides CloneSlice[T] — a generic helper for creating
+// independent deep copies of slices with fallible element cloners.
 //
 // Key behaviors:
-//   - Nil-safety: nil src → (nil, nil); empty non-nil src → fresh empty slice (preserves nil/empty distinction).
+//   - Nil-safety: nil src → (nil, nil); empty non-nil src → fresh empty slice.
 //   - Independence: cloned slice has its own backing array; mutations to src never affect the clone.
-//   - Error context: on failure, CloneSlice returns an error annotated with the failing index.
+//   - Error context: on failure, returns an error annotated with the failing index.
 //
 // Choose CloneSlice when element cloning can fail (e.g., nested structs with validation).
-// Choose CloneSliceOf for primitive types or infallible copy logic using IdentityValue[T].
+// For primitive types, pass manual.Identity[T] as the cloneElem function.
 //
-// Performance note: These helpers allocate exactly one new slice header + backing array —
+// Performance note: This helper allocates exactly one new slice header + backing array —
 // no reflection overhead, no hidden allocations beyond what the element cloner requires.
 package manual
 
@@ -43,26 +43,4 @@ func CloneSlice[T any](src []T, cloneElem func(T) (T, error)) ([]T, error) {
 	}
 
 	return dst, nil
-}
-
-// CloneSliceOf creates an independent deep copy of src using a simple
-// (infallible) element cloner. It is the convenience sibling of CloneSlice
-// for cases where cloning the element type cannot fail — typically primitive
-// types when paired with manual.IdentityValue:
-//
-//	tags := manual.CloneSliceOf(u.Tags, manual.IdentityValue[string])
-//
-// A nil src returns nil; an empty src returns a fresh empty slice.
-func CloneSliceOf[T any](src []T, cloneElem func(T) T) []T {
-	if src == nil {
-		return nil
-	}
-
-	dst := make([]T, len(src))
-
-	for idx, elem := range src {
-		dst[idx] = cloneElem(elem)
-	}
-
-	return dst
 }

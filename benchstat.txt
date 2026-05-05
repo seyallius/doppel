@@ -1,45 +1,95 @@
 goos: linux
 goarch: amd64
 pkg: github.com/seyallius/doppel/doppel_test
-cpu: 11th Gen Intel(R) Core(TM) i5-11400H @ 2.70GHz
-                                          │  bench.txt  │
-                                          │   sec/op    │
-DoppelVsReflect_Score/Doppel-12             22.03n ± 8%
-DoppelVsReflect_Score/Reflect-12            131.8n ± 3%
-DoppelVsReflect_User/Doppel-12              309.9n ± 2%
-DoppelVsReflect_User/Reflect-12             1.193µ ± 4%
-DoppelVsReflect_Order/Doppel-12             615.9n ± 4%
-DoppelVsReflect_Order/Reflect-12            2.183µ ± 4%
-DoppelVsReflect_UserLargeSlice/Doppel-12    8.363µ ± 3%
-DoppelVsReflect_UserLargeSlice/Reflect-12   32.76µ ± 0%
-DoppelVsReflect_UserLargeMap/Doppel-12      29.26µ ± 0%
-DoppelVsReflect_UserLargeMap/Reflect-12     99.41µ ± 4%
-geomean                                     2.023µ
+cpu: Intel(R) Core(TM) i5-9500 CPU @ 3.00GHz
+                             │  bench.txt   │
+                             │    sec/op    │
+ManualClone_Address-6          642.1n ± ∞ ¹
+ShallowCopy_Address-6          1.353n ± ∞ ¹
+ManualClone_User-6             362.6n ± ∞ ¹
+ShallowCopy_User-6             2.709n ± ∞ ¹
+ManualClone_Order-6            744.5n ± ∞ ¹
+ShallowCopy_Order-6            1.438n ± ∞ ¹
+ManualClone_UserLargeSlice-6   5.795µ ± ∞ ¹
+ManualClone_UserLargeMap-6     1.743µ ± ∞ ¹
+geomean                        99.00n
+¹ need >= 6 samples for confidence interval at level 0.95
 
-                                          │  bench.txt   │
-                                          │     B/op     │
-DoppelVsReflect_Score/Doppel-12               24.00 ± 0%
-DoppelVsReflect_Score/Reflect-12              96.00 ± 0%
-DoppelVsReflect_User/Doppel-12                528.0 ± 0%
-DoppelVsReflect_User/Reflect-12               968.0 ± 0%
-DoppelVsReflect_Order/Doppel-12             1.109Ki ± 0%
-DoppelVsReflect_Order/Reflect-12            1.742Ki ± 0%
-DoppelVsReflect_UserLargeSlice/Doppel-12    32.44Ki ± 0%
-DoppelVsReflect_UserLargeSlice/Reflect-12   32.87Ki ± 0%
-DoppelVsReflect_UserLargeMap/Doppel-12      53.64Ki ± 0%
-DoppelVsReflect_UserLargeMap/Reflect-12     101.4Ki ± 0%
-geomean                                     2.558Ki
+                             │   bench.txt   │
+                             │     B/op      │
+ManualClone_Address-6          1.031Ki ± ∞ ¹
+ShallowCopy_Address-6            0.000 ± ∞ ¹
+ManualClone_User-6               528.0 ± ∞ ¹
+ShallowCopy_User-6               0.000 ± ∞ ¹
+ManualClone_Order-6            1.109Ki ± ∞ ¹
+ShallowCopy_Order-6              0.000 ± ∞ ¹
+ManualClone_UserLargeSlice-6   16.47Ki ± ∞ ¹
+ManualClone_UserLargeMap-6     1.227Ki ± ∞ ¹
+geomean                                    ²
+¹ need >= 6 samples for confidence interval at level 0.95
+² summaries must be >0 to compute geomean
 
-                                          │  bench.txt  │
-                                          │  allocs/op  │
-DoppelVsReflect_Score/Doppel-12              1.000 ± 0%
-DoppelVsReflect_Score/Reflect-12             4.000 ± 0%
-DoppelVsReflect_User/Doppel-12               6.000 ± 0%
-DoppelVsReflect_User/Reflect-12              18.00 ± 0%
-DoppelVsReflect_Order/Doppel-12              11.00 ± 0%
-DoppelVsReflect_Order/Reflect-12             34.00 ± 0%
-DoppelVsReflect_UserLargeSlice/Doppel-12     6.000 ± 0%
-DoppelVsReflect_UserLargeSlice/Reflect-12    18.00 ± 0%
-DoppelVsReflect_UserLargeMap/Doppel-12       10.00 ± 0%
-DoppelVsReflect_UserLargeMap/Reflect-12     2.016k ± 0%
-geomean                                      14.28
+                             │  bench.txt  │
+                             │  allocs/op  │
+ManualClone_Address-6          12.00 ± ∞ ¹
+ShallowCopy_Address-6          0.000 ± ∞ ¹
+ManualClone_User-6             6.000 ± ∞ ¹
+ShallowCopy_User-6             0.000 ± ∞ ¹
+ManualClone_Order-6            11.00 ± ∞ ¹
+ShallowCopy_Order-6            0.000 ± ∞ ¹
+ManualClone_UserLargeSlice-6   6.000 ± ∞ ¹
+ManualClone_UserLargeMap-6     8.000 ± ∞ ¹
+geomean                                  ²
+¹ need >= 6 samples for confidence interval at level 0.95
+² summaries must be >0 to compute geomean
+
+pkg: github.com/seyallius/doppel/manual/manual_test
+                            │  bench.txt   │
+                            │    sec/op    │
+CloneMap_StringInt_50-6       1.938µ ± ∞ ¹
+CloneMap_StringInt_500-6      5.375µ ± ∞ ¹
+ShallowCopy_StringInt_500-6   5.196µ ± ∞ ¹
+ClonePointer_Int-6            14.00n ± ∞ ¹
+ShallowPointerCopy_Int-6      1.240n ± ∞ ¹
+CloneSlice_Strings_10-6       75.58n ± ∞ ¹
+CloneSlice_Strings_100-6      407.9n ± ∞ ¹
+CloneSlice_Strings_1000-6     3.931µ ± ∞ ¹
+ShallowCopy_Strings_1000-6    2.229µ ± ∞ ¹
+CloneSlice_Ints_1000-6        2.538µ ± ∞ ¹
+ShallowCopy_Ints_1000-6       1.399µ ± ∞ ¹
+geomean                       528.6n
+¹ need >= 6 samples for confidence interval at level 0.95
+
+                            │   bench.txt   │
+                            │     B/op      │
+CloneMap_StringInt_50-6       1.836Ki ± ∞ ¹
+CloneMap_StringInt_500-6      6.461Ki ± ∞ ¹
+ShallowCopy_StringInt_500-6   6.414Ki ± ∞ ¹
+ClonePointer_Int-6              8.000 ± ∞ ¹
+ShallowPointerCopy_Int-6        0.000 ± ∞ ¹
+CloneSlice_Strings_10-6         160.0 ± ∞ ¹
+CloneSlice_Strings_100-6      1.750Ki ± ∞ ¹
+CloneSlice_Strings_1000-6     16.00Ki ± ∞ ¹
+ShallowCopy_Strings_1000-6    16.00Ki ± ∞ ¹
+CloneSlice_Ints_1000-6        8.000Ki ± ∞ ¹
+ShallowCopy_Ints_1000-6       8.000Ki ± ∞ ¹
+geomean                                   ²
+¹ need >= 6 samples for confidence interval at level 0.95
+² summaries must be >0 to compute geomean
+
+                            │  bench.txt  │
+                            │  allocs/op  │
+CloneMap_StringInt_50-6       4.000 ± ∞ ¹
+CloneMap_StringInt_500-6      4.000 ± ∞ ¹
+ShallowCopy_StringInt_500-6   3.000 ± ∞ ¹
+ClonePointer_Int-6            1.000 ± ∞ ¹
+ShallowPointerCopy_Int-6      0.000 ± ∞ ¹
+CloneSlice_Strings_10-6       1.000 ± ∞ ¹
+CloneSlice_Strings_100-6      1.000 ± ∞ ¹
+CloneSlice_Strings_1000-6     1.000 ± ∞ ¹
+ShallowCopy_Strings_1000-6    1.000 ± ∞ ¹
+CloneSlice_Ints_1000-6        1.000 ± ∞ ¹
+ShallowCopy_Ints_1000-6       1.000 ± ∞ ¹
+geomean                                 ²
+¹ need >= 6 samples for confidence interval at level 0.95
+² summaries must be >0 to compute geomean

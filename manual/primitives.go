@@ -5,20 +5,18 @@
 //   - For primitive Go types (bool, int, string, float, etc.), assignment IS a deep copy.
 //   - These helpers make that intent explicit rather than relying on implicit behavior.
 //   - Identity[T] returns (T, error) for use with fallible helpers (CloneSlice, CloneMap, ClonePointer).
-//   - IdentityValue[T] returns T for use with infallible helpers (CloneSliceOf, CloneMapOf, ClonePointerOf).
+//   - IdentityValue[T] returns T for use when callers want an infallible function signature.
 //
 // Usage example:
 //
 //	tags, err := manual.CloneSlice(user.Tags, manual.Identity[string])
-//	scores := manual.CloneSliceOf(user.Scores, manual.IdentityValue[int])
+//	scores, err := manual.CloneMap(user.Scores, manual.Identity[int])
 //
 //	// compose helpers inside a type's own Clone() method:
 //	func (u *User) Clone() (*User, error) {
 //	    tags, err := manual.CloneSlice(u.Tags, manual.Identity[string])
 //	    ...
 //	}
-//
-// No reflect package is imported anywhere in this package.
 package manual
 
 // Identity returns src unchanged together with a nil error.
@@ -36,10 +34,12 @@ func Identity[T any](src T) (T, error) {
 }
 
 // IdentityValue returns src unchanged without an error return value.
-// Use this with CloneSliceOf and CloneMapOf when you want a terser call-site
-// for slices / maps of primitive types and the clone function cannot fail:
+// This is useful when callers need a func(T) T signature — for example,
+// in custom clone functions that cannot fail:
 //
-//	tags := manual.CloneSliceOf(u.Tags, manual.IdentityValue[string])
+//	func cloneValue(src string) string {
+//	    return manual.IdentityValue(src)
+//	}
 func IdentityValue[T any](src T) T {
 	return src
 }

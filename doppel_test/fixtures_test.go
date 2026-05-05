@@ -97,7 +97,7 @@ func newOrder(customer *User) *Order {
 	}
 }
 
-// -------------------------------------------- Internal Helpers --------------------------------------------
+// -------------------------------------------- Clone implementations --------------------------------------------
 
 // Clone implements core.SelfClonable[*User].
 // It composes the manual helpers to produce a complete deep copy.
@@ -144,7 +144,7 @@ func (o *Order) Clone() (*Order, error) {
 	}
 
 	customer, err := manual.ClonePointer(o.Customer, func(u User) (User, error) {
-		cloned, err := u.Clone() // *User.Clone() — pointer receiver
+		cloned, err := u.Clone()
 		if err != nil || cloned == nil {
 			return User{}, err
 		}
@@ -177,8 +177,6 @@ func (f *failingClonable) Clone() (*failingClonable, error) {
 }
 
 // cloneAddress is a stand-alone clone function for Address.
-// It is intentionally not a method so we can pass it as a func(Address)(Address,error)
-// to ClonePointer.
 func cloneAddress(src Address) (Address, error) {
 	return Address{
 		Street: src.Street,

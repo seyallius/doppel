@@ -1,163 +1,251 @@
-# 🔍 Reflection Engine (Fallback)
+# Reflection Engine
 
-> When manual cloning isn't available: safe, correct, but slower. Use judiciously. ✨
+The reflection engine is the **last strategy** in doppel's priority chain. It is consulted only when neither a registered `Cloner[T]` nor a `SelfClonable[T]` implementation exists for a given type. This means the engine is never the default — always the fallback.
 
----
-
-## When Reflection is Used
-
-The reflection engine (`engine.Engine`) is **never the default**. It is consulted only when:
-
-1. ❌ No `Cloner[T]` is registered for the type, AND
-2. ❌ The value does not implement `core.SelfClonable[T]`
-
-```
-Priority Chain:
-Registered Cloner[T] → SelfClonable[T] → engine.Engine (reflection)
-```
-
-### When to Use Reflection Fallback
-
-✅ Prototyping with third-party types you can't modify  
-✅ Legacy code migration where manual `Clone()` isn't feasible yet  
-✅ Dynamic scenarios where type isn't known at compile time  
-⚠️ **Performance note**: Manual cloning is 3-6× faster; use reflection fallback judiciously
+The engine performs recursive, field-by-field deep copying using Go's `reflect` package. It handles all common Go types and integrates with the registry for per-field customization.
 
 ---
 
-## Engine API
+## When the engine is used
+
+The engine is invoked in these situations:
+
+1. **`doppel.CloneDeep`** with no registered `Cloner[T]` and no `SelfClonable[T]`.
+2. **`engine.New(lookup).Clone(reflect.ValueOf(src))`** — direct usage.
+3. **Nested fields** during struct cloning — each field goes through the same priority chain.
+
+```
+doppel.CloneDeep(value, reg)
+    │
+    ├─ Registered Cloner[T]?  → Use it (fastest)
+    │
+    ├─ SelfClonable[T]?       → Call Clone() (fast)
+    │
+    └─ engine.Clone()         → Recursive reflection (this page)
+         │
+         ├─ For each struct field:
+         │    ├─ Struct tag?     → Apply tag directive
+         │    ├─ Field cloner?   → Use it
+         │    ├─ Type cloner?    → Use it
+         │    ├─ SelfClonable?   → Call Clone()
+         │    └─ Reflection      → Recurse
+         │
+         ├─ Slice elements → Recurse on each element
+         ├─ Map values     → Recurse on each key/value pair
+         └─ Pointer        → Recurse on pointed-to value
+```
+
+---
+
+## Supported types
+
+### Primitives (assignment copy)
+
+These types need no special handling — assignment IS a complete deep copy:
+
+`bool`, `int`, `int8`, `int16`, `int32`, `int64`, `uint`, `uint8`, `uint16`, `uint32`, `uint64`, `uintptr`, `float32`, `float64`, `complex64`, `complex128`, `string`
 
 ```go
-// Engine performs reflection-based deep copying as the LAST resort.
-type Engine struct { /* unexported */ }
+src := 42
+cloned, _ := engine.New(nil).Clone(reflect.ValueOf(src))
+// cloned.Int() == 42 — allocated via reflect.New, then Set
+```
 
-// Options configures an Engine at construction time.
-type Options struct {
-    CyclePolicy CyclePolicy // zero value = PreserveShared
+### Structs
+
+Each exported field is cloned recursively. Unexported fields are **skipped** — they are inaccessible via reflection without `unsafe`. To include unexported fields, implement `SelfClonable[T]` on the type.
+
+```go
+type User struct {
+    Name   string
+    Active bool
+    secret string // skipped — not exported
+}
+```
+
+### Pointers
+
+The pointed-to value is recursively cloned. A fresh allocation is created for the clone:
+
+```go
+type Parent struct {
+    Child *Child
 }
 
-// CyclePolicy controls how Engine handles cyclic and shared pointer references.
-type CyclePolicy int
+// Parent.Child in the clone points to a new *Child allocation
+// Mutating original.Child does not affect clone.Child
+```
 
-const (
-    PreserveShared CyclePolicy = iota // default: reproduce exact graph topology
-    BreakCycles                       // break back-edges → nil, acyclic output
-    ErrorOnCycle                      // return *CycleError on any back-edge
-)
+### Slices
 
-// CycleError is returned when CyclePolicy is ErrorOnCycle and a cycle is detected.
-type CycleError struct {
-    Addr     uintptr // pointer address where cycle detected
-    TypeName string  // reflect.Type.String() for debugging
+A new backing array is allocated. Each element is recursively cloned:
+
+```go
+// Original and clone have independent backing arrays
+original.Tags[0] = "mutated"
+// clone.Tags[0] still has the original value
+```
+
+Nil slices return nil. Empty slices return a fresh empty (non-nil) slice — the nil-vs-empty distinction is preserved.
+
+### Maps
+
+A new map is allocated. Each key and value is recursively cloned:
+
+```go
+// Original and clone are independent maps
+original.Scores["math"] = 0
+// clone.Scores["math"] still has the original value
+```
+
+Nil maps return nil. Empty maps return a fresh empty (non-nil) map.
+
+### Arrays
+
+Fixed-length arrays are cloned element-by-element into a new array:
+
+```go
+src := [4]int{10, 20, 30, 40}
+cloned, _ := engine.New(nil).Clone(reflect.ValueOf(src))
+// cloned is a [4]int with the same values
+```
+
+### Interfaces
+
+The concrete value stored inside the interface is recursively cloned. The interface type is preserved:
+
+```go
+type Holder struct {
+    Anything any
 }
 
-// New creates an Engine with default options (PreserveShared cycle policy).
-func New(lookup TypeLookup) *Engine
+src := Holder{Anything: 42}
+cloned, _ := engine.New(nil).Clone(reflect.ValueOf(src))
+// cloned.Anything == 42 (int)
+```
 
-// NewWithOptions creates an Engine with explicitly configured options.
-func NewWithOptions(lookup TypeLookup, opts Options) *Engine
+### Unsupported types
 
-// Clone deep-copies src and returns a reflect.Value of the same type.
-func (e *Engine) Clone(src reflect.Value) (reflect.Value, error)
+`Chan`, `Func`, and `UnsafePointer` carry reference semantics that cannot be meaningfully deep-copied. They are **shallow-copied** (the reference is shared between original and clone). This is a deliberate design choice — deep-copying a channel or function makes no semantic sense.
+
+---
+
+## SelfClonable detection
+
+The engine detects `SelfClonable[T]` at runtime using reflection. It checks whether the value (or its pointer) has a `Clone() (T, error)` method with the correct signature:
+
+```go
+type MyType struct { Data string }
+
+func (m *MyType) Clone() (*MyType, error) {
+    return &MyType{Data: m.Data + "_cloned"}, nil
+}
+
+// The engine detects this automatically:
+eng := engine.New(nil)
+cloned, _ := eng.Clone(reflect.ValueOf(&MyType{Data: "test"}))
+// cloned.Data == "test_cloned"
+```
+
+Detection works for both value receivers and pointer receivers:
+
+| Receiver | Detection |
+|----------|-----------|
+| `func (m MyType) Clone() (MyType, error)` | Detected on the value |
+| `func (m *MyType) Clone() (*MyType, error)` | Detected on `*MyType` or `MyType` (via `&val`) |
+
+---
+
+## Registry integration
+
+The engine accepts an optional `TypeLookup` (typically `*registry.Registry`) at construction time. At every node of the value graph, it checks the registry before falling through to reflection:
+
+```go
+reg := registry.New()
+registry.Register(reg, core.NewFuncCloner(myCustomCloner))
+
+eng := engine.New(reg)
+// For every value encountered during cloning:
+//   1. Check registry.LookupAny(type)
+//   2. Check SelfClonable
+//   3. Reflect
+```
+
+The `FieldLookup` interface is auto-detected when the `TypeLookup` also implements it (as `*registry.Registry` does). This enables field-level cloner integration without additional configuration:
+
+```go
+reg := registry.New()
+registry.RegisterField[User, *Address](reg, "Address", cloner)
+
+eng := engine.New(reg)
+// During struct cloning of User:
+//   - Checks for field cloner on "Address" → found → uses it
+//   - All other fields → default reflection
 ```
 
 ---
 
-## Cycle Policies
-
-### `PreserveShared` (Default)
-
-Reproduces exact graph topology. Shared pointers in the original remain shared in the clone.
+## Creating an engine
 
 ```go
-// Self-loop: n → n
-n := &Node{Value: 42}
-n.Next = n
+// Default: PreserveShared cycle policy, no registry
+eng := engine.New(nil)
 
-eng := engine.New(nil) // default: PreserveShared
-clonedVal, _ := eng.Clone(reflect.ValueOf(n))
-cloned := clonedVal.Interface().(*Node)
+// With registry (type + field cloners)
+eng := engine.New(reg)
 
-// Cycle preserved: cloned.Next == cloned
-```
-
-✅ Use for: General-purpose cloning, faithful reproduction
-
-### `BreakCycles`
-
-Breaks back-edges by setting them to `nil`, producing an acyclic output safe for serialization.
-
-```go
-eng := engine.NewWithOptions(nil, engine.Options{
+// With custom cycle policy
+eng := engine.NewWithOptions(reg, engine.Options{
     CyclePolicy: engine.BreakCycles,
 })
-clonedVal, _ := eng.Clone(reflect.ValueOf(n))
-cloned := clonedVal.Interface().(*Node)
-
-// Cycle broken: cloned.Next == nil ← safe for JSON!
 ```
 
-✅ Use for: JSON/YAML serialization, tree conversion, avoiding infinite loops
+See [Cycle & Sharing Policy](cycle-policy.md) for details on the three policies.
 
-### `ErrorOnCycle`
+---
 
-Returns `*CycleError` on any cycle for strict validation during development.
+## Concurrency
+
+`Engine` is safe for concurrent use. All mutable state lives in per-call `cloneState` values, which are never shared across goroutines:
 
 ```go
-eng := engine.NewWithOptions(nil, engine.Options{
-    CyclePolicy: engine.ErrorOnCycle,
-})
-_, err := eng.Clone(reflect.ValueOf(n))
-// err.(*engine.CycleError) → "cycle detected at 0x... (type *GraphNode)"
+eng := engine.New(nil)
+
+var wg sync.WaitGroup
+for i := 0; i < 100; i++ {
+    wg.Add(1)
+    go func() {
+        defer wg.Done()
+        cloned, err := eng.Clone(reflect.ValueOf(src))
+        _ = cloned
+        _ = err
+    }()
+}
+wg.Wait()
 ```
 
-✅ Use for: Development-time assertions, data model validation
+---
+
+## Reflection usage summary
+
+The engine uses reflection for legitimate deep-copy purposes only:
+
+- Reading and writing struct fields.
+- Allocating new slices, maps, arrays, and pointers.
+- Detecting `SelfClonable` via method lookup.
+- Dispatching to registered `Cloner[T]`s via `TypeLookup`/`FieldLookup`.
+
+Reflection is **not** used for:
+- Dynamic field access patterns beyond what is needed for deep copy.
+- Serialization, deserialization, or any non-cloning purpose.
+- Bypassing access controls (unexported fields are skipped).
 
 ---
 
-## Features & Limitations
+## What's next?
 
-### ✅ Features
-
-- Kind-specific cloning: `Ptr`, `Struct`, `Slice`, `Map`, `Array`, `Interface`, primitives
-- Struct tag support: `doppel:"-"` (skip), `doppel:"shallow"` (share backing)
-- Configurable cycle handling via `CyclePolicy`
-- Shared reference preservation under `PreserveShared`
-- Nil-safety: preserves `nil` vs `empty` distinction for slices/maps/pointers
-- Error context: wraps failures with field-path via `core.WrapError`
-- Concurrency: all mutable state is per-call; `Engine` is safe for concurrent use
-
-### ❌ Limitations
-
-- Unexported fields are skipped (use `SelfClonable[T]` to include them)
-- `chan`, `func`, `unsafe.Pointer` are shallow-copied (reference semantics)
-- Interface values cloned via concrete type; dynamic dispatch preserved
-
----
-
-## Performance Considerations
-
-### Benchmark Comparison (Indicative)
-
-| Benchmark        | Manual (ns/op) | Reflection (ns/op) | Speedup   |
-|------------------|----------------|--------------------|-----------|
-| `Score`          | 22.03 ± 8%     | 131.8 ± 3%         | **~6×**   |
-| `User`           | 309.9 ± 2%     | 1.193µ ± 4%        | **~4×**   |
-| `Order`          | 615.9 ± 4%     | 2.183µ ± 4%        | **~3.5×** |
-| `UserLargeSlice` | 8.363µ ± 3%    | 32.76µ ± 0%        | **~4×**   |
-| `UserLargeMap`   | 29.26µ ± 0%    | 99.41µ ± 4%        | **~3.4×** |
-
-### Key Takeaways
-
-- 🚀 Manual cloning is **3-6× faster** than reflection-based cloning
-- 🧠 Manual cloning uses **~40-95% fewer allocations**, especially with large maps
-- ⚡ The gap grows with complexity — nested structs and large collections benefit most
-- 🔁 Reflection fallback is still **correct and safe** — use when convenience outweighs performance
-
-> 💡 **Pro Tip**: When using the reflection engine, register cloners for hot-path types via `TypeLookup`. A registry hit
-> reduces reflection overhead to near-zero. (◕‿◕)✧
-
-<!--
+- **[Struct Tags](struct-tags.md)** — Control per-field behavior with `doppel:"..."` annotations.
+- **[Cycle & Sharing Policy](cycle-policy.md)** — Handle cyclic and shared pointer graphs.
 
 <!-- Navigation (AUTO-GENERATED - DO NOT EDIT) -->
 
@@ -168,11 +256,11 @@ _, err := eng.Clone(reflect.ValueOf(n))
         📚 doppel Documentation • Reflection Engine
     </div>
     <div style="display: flex; justify-content: space-between; align-items: stretch; gap: 1.5rem; flex-wrap: wrap; margin-top: 1.5rem;">
-        <div style="flex: 1; min-width: 200px;"><a href="advanced.md" style="display: flex; align-items: center; gap: 0.75rem; padding: 1rem 1.5rem; background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; line-height: 1.4; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);">
+        <div style="flex: 1; min-width: 200px;"><a href="field-cloners.md" style="display: flex; align-items: center; gap: 0.75rem; padding: 1rem 1.5rem; background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; line-height: 1.4; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);">
                 <span style="font-size: 1.2rem; font-weight: 700; line-height: 1;">←</span>
                 <span style="display: flex; flex-direction: column; line-height: 1.3;">
                     <span style="font-size: 0.7rem; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Previous</span>
-                    <span style="font-size: 1rem; font-weight: 600;">Advanced</span>
+                    <span style="font-size: 1rem; font-weight: 600;">Field Cloners</span>
                 </span>
             </a></div>
         <div style="flex: 1; min-width: 200px; display: flex; justify-content: center; align-items: center;">
@@ -184,10 +272,10 @@ _, err := eng.Clone(reflect.ValueOf(n))
                 </span>
             </a>
         </div>
-        <div style="flex: 1; min-width: 200px; display: flex; justify-content: flex-end;"><a href="testing.md" style="display: flex; align-items: center; justify-content: flex-end; gap: 0.75rem; padding: 1rem 1.5rem; background: linear-gradient(135deg, #10b981, #047857); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; line-height: 1.4; text-align: right; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);">
+        <div style="flex: 1; min-width: 200px; display: flex; justify-content: flex-end;"><a href="struct-tags.md" style="display: flex; align-items: center; justify-content: flex-end; gap: 0.75rem; padding: 1rem 1.5rem; background: linear-gradient(135deg, #10b981, #047857); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; line-height: 1.4; text-align: right; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);">
                 <span style="display: flex; flex-direction: column; line-height: 1.3;">
                     <span style="font-size: 0.7rem; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Next</span>
-                    <span style="font-size: 1rem; font-weight: 600;">Testing & Benchmarks</span>
+                    <span style="font-size: 1rem; font-weight: 600;">Struct Tags</span>
                 </span>
                 <span style="font-size: 1.2rem; font-weight: 700; line-height: 1;">→</span>
             </a></div>

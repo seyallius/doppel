@@ -1,29 +1,7 @@
-# 🎯 Getting Started with doppel
+# Getting Started
 
-> Quick onboarding: why doppel exists, how to install it, and your first clone. ✨
+Get doppel installed and write your first deep clone in under two minutes.
 
----
-
-## Why doppel?
-
-Most deep-copy libraries in Go use `reflect` as their primary engine. Reflection works for any type automatically, but
-it comes with real costs:
-
-| Issue           | Impact                                                                                       |
-|-----------------|----------------------------------------------------------------------------------------------|
-| **Performance** | Reflection bypasses compiler optimizations, paying allocation overhead on every field access |
-| **Opacity**     | Silent skipping of unexported fields, mishandled interfaces, unexpected shared references    |
-| **No Control**  | Can't conditionally clone fields or mix shallow/deep strategies per-field                    |
-
-`doppel` inverts the priority order:
-
-| Priority | Strategy                                           | When Used                                       |
-|----------|----------------------------------------------------|-------------------------------------------------|
-| 1        | **Manual clone** (your `Clone()` method)           | Always, by default — fastest path               |
-| 2        | **External `Cloner[T]`** (via `CloneWith`)         | When clone logic needs injected context         |
-| 3        | **Registry `Cloner[T]`** (via `CloneWithRegistry`) | Type-level override without modifying source    |
-| 4        | **Reflection fallback** (`engine.Engine`)          | Last resort — only when none of the above exist |
-By default, reflection is not used at all. Every copy decision is written explicitly by you. ✧◝(⁰▿⁰)◜✧
 ---
 
 ## Installation
@@ -32,80 +10,124 @@ By default, reflection is not used at all. Every copy decision is written explic
 go get github.com/seyallius/doppel
 ```
 
-**Requirements**: Go 1.25 or later (for generic type inference and range-over-integer improvements).
+doppel requires **Go 1.25** or later. There are zero external dependencies — only the Go standard library is used.
 
 ---
 
-## Quick Example
+## Your first clone
+
+The simplest way to use doppel is to implement the `core.SelfClonable[T]` interface on your type. This means adding a single method — `Clone() (T, error)` — that returns an independent deep copy.
+
+### Step 1: Define your type
 
 ```go
-// Package cmd. main.go - Quick start example for doppel library.
 package main
 
+type User struct {
+    ID     int64
+    Name   string
+    Active bool
+    Tags   []string
+    Scores map[string]int
+}
+```
+
+### Step 2: Implement `Clone()`
+
+Use doppel's manual helpers to clone each field. For primitive fields (`int64`, `string`, `bool`), assignment is already a deep copy — no helper needed.
+
+```go
 import (
-    "fmt"
-    "github.com/seyallius/doppel"
-    "github.com/seyallius/doppel/manual"
     "github.com/seyallius/doppel/core"
+    "github.com/seyallius/doppel/manual"
 )
 
-// User represents a simple domain entity.
-type User struct {
-    ID   int64
-    Name string
-    Tags []string
-}
-
-// Clone implements SelfClonable[*User] for explicit deep copying.
-// Returns an independent copy with no shared references.
 func (u *User) Clone() (*User, error) {
     if u == nil {
         return nil, nil
     }
-    // Clone slice of primitives using Identity helper
+
+    // Clone the slice — Identity[string] means "strings don't need deep copy"
     tags, err := manual.CloneSlice(u.Tags, manual.Identity[string])
     if err != nil {
         return nil, core.WrapError("User.Tags", err)
     }
+
+    // Clone the map — Identity[int] means "ints don't need deep copy"
+    scores, err := manual.CloneMap(u.Scores, manual.Identity[int])
+    if err != nil {
+        return nil, core.WrapError("User.Scores", err)
+    }
+
+    // Return a new User with all fields independently copied
     return &User{
-        ID:   u.ID,
-        Name: u.Name,
-        Tags: tags, // independent slice
+        ID:     u.ID,
+        Name:   u.Name,
+        Active: u.Active,
+        Tags:   tags,
+        Scores: scores,
     }, nil
 }
+```
+
+### Step 3: Call `doppel.Clone`
+
+```go
+import "github.com/seyallius/doppel"
 
 func main() {
     original := &User{
-        ID:   1,
-        Name: "Alice",
-        Tags: []string{"admin", "dev"},
+        ID:     1,
+        Name:   "Alice",
+        Active: true,
+        Tags:   []string{"admin", "editor"},
+        Scores: map[string]int{"math": 95, "english": 88},
     }
-    
-    // Deep clone using doppel's public API
+
     cloned, err := doppel.Clone(original)
     if err != nil {
         panic(err)
     }
-    
-    // Verify independence
-    cloned.Tags = append(cloned.Tags, "modified")
-    fmt.Println("Original tags:", original.Tags) // [admin dev]
-    fmt.Println("Cloned tags:  ", cloned.Tags)   // [admin dev modified] ✧
+
+    // Mutate the original — the clone is unaffected
+    original.Tags[0] = "mutated"
+    original.Scores["math"] = 0
+
+    fmt.Println(cloned.Tags[0])    // "admin" (not "mutated")
+    fmt.Println(cloned.Scores["math"]) // 95 (not 0)
 }
 ```
 
 ---
 
-## Next Steps
+## Quick reference: choosing the right API
 
-- 🧠 Understand the [Core Concepts](./core-concepts.md)
-- 🛠️ Follow the [Usage Guide](./usage-guide.md) step-by-step
-- 🔍 Learn about the [Reflection Fallback](./reflection-engine.md) for edge cases
+| You have...                  | You want...                          | Use                                    |
+|------------------------------|--------------------------------------|----------------------------------------|
+| A type with `Clone()` method | Just clone it                        | `doppel.Clone(value)`                  |
+| A type without `Clone()`     | Clone with a custom function         | `doppel.CloneWith(value, cloner)`      |
+| A type without `Clone()`     | Clone with a registry lookup         | `doppel.CloneWithRegistry(value, reg)` |
+| Any type                     | Full deep copy (reflection fallback) | `doppel.CloneDeep(value, reg)`         |
+| A large struct               | Override only a few fields           | `CloneDeep` + `registry.RegisterField` |
 
-> 💡 **Remember**: Manual cloning is always the default. Reflection is a controlled fallback — never the first choice. (
-> ◕‿◕)
+---
 
-<!--
+## Must variants
+
+Every clone function has a `Must` variant that panics instead of returning an error. Use these in tests and initialization code where a cloning failure is always a programming error:
+
+```go
+cloned := doppel.MustClone(original)
+cloned := doppel.MustCloneWith(original, cloner)
+cloned := doppel.MustCloneDeep(original, reg)
+```
+
+---
+
+## What's next?
+
+- **[SelfClonable Interface](self-clonable.md)** — Deep dive into the `Clone()` method pattern, including nested structs and pointer fields.
+- **[Manual Helpers](manual-helpers.md)** — Learn about `CloneSlice`, `CloneMap`, `ClonePointer`, and `Identity`.
 
 <!-- Navigation (AUTO-GENERATED - DO NOT EDIT) -->
 
@@ -120,7 +142,7 @@ func main() {
                 <span style="font-size: 1.2rem; font-weight: 700; line-height: 1;">←</span>
                 <span style="display: flex; flex-direction: column; line-height: 1.3;">
                     <span style="font-size: 0.7rem; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Previous</span>
-                    <span style="font-size: 1rem; font-weight: 600;">INDEX.md</span>
+                    <span style="font-size: 1rem; font-weight: 600;">Home</span>
                 </span>
             </a></div>
         <div style="flex: 1; min-width: 200px; display: flex; justify-content: center; align-items: center;">
@@ -132,10 +154,10 @@ func main() {
                 </span>
             </a>
         </div>
-        <div style="flex: 1; min-width: 200px; display: flex; justify-content: flex-end;"><a href="philosophy.md" style="display: flex; align-items: center; justify-content: flex-end; gap: 0.75rem; padding: 1rem 1.5rem; background: linear-gradient(135deg, #10b981, #047857); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; line-height: 1.4; text-align: right; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);">
+        <div style="flex: 1; min-width: 200px; display: flex; justify-content: flex-end;"><a href="self-clonable.md" style="display: flex; align-items: center; justify-content: flex-end; gap: 0.75rem; padding: 1rem 1.5rem; background: linear-gradient(135deg, #10b981, #047857); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; line-height: 1.4; text-align: right; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);">
                 <span style="display: flex; flex-direction: column; line-height: 1.3;">
                     <span style="font-size: 0.7rem; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Next</span>
-                    <span style="font-size: 1rem; font-weight: 600;">Philosophy</span>
+                    <span style="font-size: 1rem; font-weight: 600;">SelfClonable</span>
                 </span>
                 <span style="font-size: 1.2rem; font-weight: 700; line-height: 1;">→</span>
             </a></div>

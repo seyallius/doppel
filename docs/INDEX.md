@@ -1,119 +1,116 @@
-# 🏠 doppel Documentation Index
+# doppel
 
-> Table of contents for the doppel Go library documentation.
+**Your data's doppelgänger — deep copies without side effects.**
 
-**doppel** — Safe, explicit deep cloning of Go data structures.
-
-*"Your data's doppelgänger — deep copies without side effects."*
-
----
-
-## 📄 Documentation Files
-
-| File                                                             | Description                                                             |
-|------------------------------------------------------------------|-------------------------------------------------------------------------|
-| [🗺️ Roadmap](../../../../Downloads/Documents/roadmap.md)        | Phased development plan — Phase 1 through Phase 5                       |
-| [📖 Usage Guide](../../../../Downloads/Documents/usage-guide.md) | Step-by-step guide from simple to advanced cloning                      |
-| [📐 API Reference](api-reference.md)                             | Complete reference for every public symbol                              |
-| [⚡ Advanced Topics](advanced.md)                                 | Deep dives into priority chains, engine internals, and design decisions |
+doppel is a Go library for safe, explicit deep cloning of complex data structures. It provides a layered architecture
+that prioritizes manual, zero-reflection cloning by default, with an optional reflection fallback for types you don't
+control — all fully composable and extensible through a type-safe registry.
 
 ---
 
-## 📑 Topic Index
+## Why doppel?
 
-### Getting Started
+Go assignment is a shallow copy. Structs with pointer fields, slices, and maps silently share memory between "originals"
+and "copies." This leads to subtle, hard-to-track bugs when code mutates what it believes is an independent copy. doppel
+solves this by providing explicit, composable deep-copy primitives that give you full control over every field, every
+allocation, and every edge case.
 
-- [Implement SelfClonable](../../../../Downloads/Documents/usage-guide.md#step-1--implement-selfclonable)
-- [Use doppel.Clone](../../../../Downloads/Documents/usage-guide.md#step-2--use-doppeclone)
-- [Use Manual Helpers](../../../../Downloads/Documents/usage-guide.md#step-3--use-manual-helpers)
-- [Use doppel.CloneWith](../../../../Downloads/Documents/usage-guide.md#step-4--use-doppelclonewith)
+### Key principles
 
-### Registry (Phase 2)
-
-- [Create a Registry](../../../../Downloads/Documents/usage-guide.md#step-5--create-a-registry)
-- [Register Type Cloners](../../../../Downloads/Documents/usage-guide.md#step-6--register-type-cloners)
-- [Use doppel.CloneWithRegistry](../../../../Downloads/Documents/usage-guide.md#step-7--use-doppelclonewithregistry)
-- [Type-Level Cloner Registration API](api-reference.md#type-level-cloner-registration-registry-package)
-
-### Field-Level Cloning (Phase 3) 🆕
-
-- [Field-Level Cloning with CloneDeep](../../../../Downloads/Documents/usage-guide.md#step-9--field-level-cloning-with-clonedeep) —
-  The core Phase 3 workflow
-- [Field-Level Cloner Registration API](api-reference.md#field-level-cloner-registration-registry-package) —
-  RegisterField, LookupField, HasField, DeregisterField, FieldLen, LookupAnyField
-- [doppel.CloneDeep](api-reference.md#doppelclonedeep) — Full priority chain: Type Cloner → SelfClonable → Engine
-- [doppel.MustCloneDeep](api-reference.md#doppelmustclonedeep) — Panic-on-error variant
-- [Field-Level Cloners (Advanced)](advanced.md#field-level-cloners) — Auto-discovery, priority, same-field-name
-  independence
-- [Struct Tag Directives](advanced.md#struct-tag-directives) — `doppel:"clone"`, `doppel:"deep"`, `doppel:"readonly"`
-  and more
-- [Per-Field Priority Chain](advanced.md#priority-chains) — How the engine resolves each field
-- [Phase 3 Roadmap Entry](../../../../Downloads/Documents/roadmap.md) — What shipped in Phase 3
-
-### Advanced
-
-- [Priority Chains](advanced.md#priority-chains) — Top-level and per-field priority
-- [Registry Internals](advanced.md#registry-internals) — Type key derivation, field key derivation, reflect-level
-  bridges
-- [Engine Architecture](advanced.md#engine-architecture) — Kind dispatch, stateless design
-- [Concurrency Model](advanced.md#concurrency-model) — Thread safety for Registry, Engine, and doppel functions
-- [Error Handling Patterns](advanced.md#error-handling-patterns) — Error-return vs. MustClone variants
-
-### Core Interfaces
-
-- [core.Cloner[T]](api-reference.md#corecloner) — The extension interface
-- [core.SelfClonable[T]](api-reference.md#coreselfclonable) — Self-cloning types
-- [core.NewFuncCloner](api-reference.md#corenewfunccloner) — Function-to-Cloner adapter
-- [core.ErrNoCloner](api-reference.md#corerrnocloner) — "no strategy available" sentinel
+| Principle                  | What it means                                                                                                       |
+|----------------------------|---------------------------------------------------------------------------------------------------------------------|
+| **Manual first**           | No reflection, no magic, maximum speed. You write the clone logic using type-safe generics.                         |
+| **Reflection as fallback** | The engine is consulted only when no manual clone exists — never the default, always the last resort.               |
+| **Composable**             | `CloneSlice`, `CloneMap`, `ClonePointer` are generic helpers you wire together inside your type's `Clone()` method. |
+| **Extensible**             | Register per-type or per-field cloners to override the default behavior without modifying the original type.        |
+| **Explicit**               | Every clone path is visible and auditable — no hidden behavior, no surprises.                                       |
 
 ---
 
-## 🏷️ API Quick Reference
+## Architecture overview
 
-### doppel Package
+doppel is built in five phases, each adding capability on top of the previous:
 
-| Function            | Signature                        | Phase |
-|---------------------|----------------------------------|-------|
-| `Clone`             | `(SelfClonable[T]) → (T, error)` | 1     |
-| `MustClone`         | `(SelfClonable[T]) → T`          | 1     |
-| `CloneWith`         | `(T, Cloner[T]) → (T, error)`    | 1     |
-| `MustCloneWith`     | `(T, Cloner[T]) → T`             | 1     |
-| `CloneWithRegistry` | `(T, *Registry) → (T, error)`    | 2     |
-| `CloneDeep`         | `(T, *Registry) → (T, error)`    | 3 🆕  |
-| `MustCloneDeep`     | `(T, *Registry) → T`             | 3 🆕  |
+```
+Phase 1: Manual Deep Copy Foundation
+  ├── core.Cloner[T]            — external clone logic interface
+  ├── core.SelfClonable[T]      — self-cloning type interface
+  ├── core.FuncCloner[T]        — function-to-Cloner adapter
+  ├── manual.CloneSlice[T]      — generic slice deep copy
+  ├── manual.CloneMap[K,V]      — generic map deep copy
+  ├── manual.ClonePointer[T]    — generic pointer deep copy
+  └── manual.Identity[T]        — no-op helper for primitives
 
-### registry Package — Type-Level
+Phase 2: Cloner Registry
+  └── registry.Registry         — thread-safe, type-keyed cloner store
 
-| Function     | Signature                         | Phase |
-|--------------|-----------------------------------|-------|
-| `New`        | `() → *Registry`                  | 2     |
-| `Register`   | `(*Registry, Cloner[T])`          | 2     |
-| `Lookup`     | `(*Registry) → (Cloner[T], bool)` | 2     |
-| `Deregister` | `(*Registry)`                     | 2     |
-| `Has`        | `(*Registry) → bool`              | 2     |
-| `Len`        | `(*Registry) → int`               | 2     |
-| `LookupAny`  | `(reflect.Type) → (func, bool)`   | 2     |
+Phase 3: Field-Level Customization
+  └── registry.RegisterField[T,F]  — per-field cloner overrides
 
-### registry Package — Field-Level 🆕
+Phase 4: Reflection Engine
+  └── engine.Engine             — reflection-based deep copy fallback
 
-| Function          | Signature                                 | Phase |
-|-------------------|-------------------------------------------|-------|
-| `RegisterField`   | `(*Registry, string, Cloner[F])`          | 3     |
-| `LookupField`     | `(*Registry, string) → (Cloner[F], bool)` | 3     |
-| `HasField`        | `(*Registry, string) → bool`              | 3     |
-| `DeregisterField` | `(*Registry, string) → bool`              | 3     |
-| `FieldLen`        | `(*Registry) → int`                       | 3     |
-| `LookupAnyField`  | `(reflect.Type, string) → (func, bool)`   | 3     |
+Phase 5: Cycle & Sharing Policy
+  └── engine.CyclePolicy        — PreserveShared / BreakCycles / ErrorOnCycle
+```
 
-### Struct Tags 🆕
+### Clone dispatch chain
 
-| Tag                 | Behavior                               | Phase |
-|---------------------|----------------------------------------|-------|
-| `doppel:"-"`        | Skip field (zero value in clone)       | 4     |
-| `doppel:"shallow"`  | Shallow copy (share reference)         | 4     |
-| `doppel:"readonly"` | Shallow copy (immutability intent)     | 3 🆕  |
-| `doppel:"clone"`    | Require field Cloner; error if missing | 3 🆕  |
-| `doppel:"deep"`     | Explicit deep copy (same as default)   | 3 🆕  |
+When you call `doppel.CloneDeep`, the library walks this priority chain, stopping at the first strategy that applies:
+
+```
+Registered Cloner[T]  →  SelfClonable[T]  →  Field Cloner  →  Reflection Engine
+     (fastest)              (type-owned)      (per-field)      (automatic)
+```
+
+---
+
+## Package map
+
+| Package    | Role                                                                                  |
+|------------|---------------------------------------------------------------------------------------|
+| `doppel`   | Top-level API: `Clone`, `CloneWith`, `CloneWithRegistry`, `CloneDeep`                 |
+| `core`     | Foundational interfaces: `Cloner[T]`, `SelfClonable[T]`, `FuncCloner[T]`, error types |
+| `manual`   | Generic helpers: `CloneSlice`, `CloneMap`, `ClonePointer`, `Identity`                 |
+| `registry` | Thread-safe type-keyed and field-keyed cloner store                                   |
+| `engine`   | Reflection-based deep copy engine with cycle detection                                |
+
+## Navigation flow
+
+```
+INDEX 
+→ Getting Started 
+→ SelfClonable 
+→ Manual Helpers 
+→ Registry 
+→ Field Cloners
+→ Reflection Engine 
+→ Struct Tags 
+→ Cycle Policy 
+→ Error Handling 
+→ Patterns
+→ Benchmarks 
+→ API Reference
+```
+
+---
+
+## Documentation roadmap
+
+The documentation is designed to be read in order. Each page builds on concepts introduced in the previous one.
+
+1. **[Getting Started](getting-started.md)** — Install doppel, write your first clone in under 2 minutes.
+2. **[SelfClonable Interface](self-clonable.md)** — The primary interface for types that own their clone logic.
+3. **[Manual Helpers](manual-helpers.md)** — Generic slice, map, and pointer cloners you compose inside `Clone()`.
+4. **[Cloner Registry](registry.md)** — Register cloners for types you don't control or need context for.
+5. **[Field-Level Cloners](field-cloners.md)** — Override clone behavior for individual struct fields.
+6. **[Reflection Engine](reflection-engine.md)** — How the automatic fallback works and what it supports.
+7. **[Struct Tags](struct-tags.md)** — Control cloning per-field with `doppel:"..."` struct tags.
+8. **[Cycle & Sharing Policy](cycle-policy.md)** — Handle cyclic and shared pointer graphs.
+9. **[Error Handling](error-handling.md)** — Understand and work with doppel's error types.
+10. **[Patterns & Best Practices](patterns.md)** — Proven patterns for real-world usage.
+11. **[Benchmarks](benchmarks.md)** — Performance data comparing manual, registry, and reflection paths.
+12. **[API Reference](api-reference.md)** — Complete function and type signatures.
 
 <!-- Navigation (AUTO-GENERATED - DO NOT EDIT) -->
 
@@ -121,16 +118,10 @@
 
 <div style="margin-top: 3rem; margin-bottom: 1rem; padding: 2rem 1.5rem; border-top: 2px solid #1e293b; border-radius: 12px; background: linear-gradient(145deg, #0f172a, #0b111c);">
     <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #e1e4e8; text-align: center; color: #586069; font-size: 0.85rem;">
-        📚 doppel Documentation • Documentation Index
+        📚 doppel Documentation • Documentation
     </div>
     <div style="display: flex; justify-content: space-between; align-items: stretch; gap: 1.5rem; flex-wrap: wrap; margin-top: 1.5rem;">
-        <div style="flex: 1; min-width: 200px;"><a href="../README.md" style="display: flex; align-items: center; gap: 0.75rem; padding: 1rem 1.5rem; background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; line-height: 1.4; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);">
-                <span style="font-size: 1.2rem; font-weight: 700; line-height: 1;">←</span>
-                <span style="display: flex; flex-direction: column; line-height: 1.3;">
-                    <span style="font-size: 0.7rem; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Previous</span>
-                    <span style="font-size: 1rem; font-weight: 600;">README.md</span>
-                </span>
-            </a></div>
+        <div style="flex: 1; min-width: 200px;"></div>
         <div style="flex: 1; min-width: 200px; display: flex; justify-content: center; align-items: center;">
             <a href="INDEX.md" style="display: flex; align-items: center; justify-content: center; gap: 0.75rem; padding: 1rem 1.5rem; background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; line-height: 1.4; box-shadow: 0 2px 4px rgba(139, 92, 246, 0.3); text-align: center;">
                 <span style="font-size: 1.2rem; font-weight: 700; line-height: 1;">⌂</span>

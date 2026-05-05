@@ -1,11 +1,11 @@
 {
-  "baseUrl": "./",
+  "baseUrl": "",
   "docs": [
     {
       "file": "INDEX.md",
-      "title": "Documentation Index",
-      "prev": "../README.md",
-      "prevLabel": "README.md",
+      "title": "Documentation",
+      "prev": "",
+      "prevLabel": "",
       "next": "getting-started.md",
       "nextLabel": "Getting Started"
     },
@@ -13,73 +13,97 @@
       "file": "getting-started.md",
       "title": "Getting Started",
       "prev": "INDEX.md",
-      "prevLabel": "INDEX.md",
-      "next": "philosophy.md",
-      "nextLabel": "Philosophy"
+      "prevLabel": "Home",
+      "next": "self-clonable.md",
+      "nextLabel": "SelfClonable"
     },
     {
-      "file": "philosophy.md",
-      "title": "Design Philosophy",
+      "file": "self-clonable.md",
+      "title": "SelfClonable Interface",
       "prev": "getting-started.md",
       "prevLabel": "Getting Started",
-      "next": "core-concepts.md",
-      "nextLabel": "Core Concepts"
+      "next": "manual-helpers.md",
+      "nextLabel": "Manual Helpers"
     },
     {
-      "file": "core-concepts.md",
-      "title": "Core Concepts",
-      "prev": "philosophy.md",
-      "prevLabel": "Philosophy",
-      "next": "api-reference.md",
-      "nextLabel": "API Reference"
+      "file": "manual-helpers.md",
+      "title": "Manual Helpers",
+      "prev": "self-clonable.md",
+      "prevLabel": "SelfClonable",
+      "next": "registry.md",
+      "nextLabel": "Registry"
     },
     {
-      "file": "api-reference.md",
-      "title": "API Reference",
-      "prev": "core-concepts.md",
-      "prevLabel": "Core Concepts",
-      "next": "usage-guide.md",
-      "nextLabel": "Usage Guide"
+      "file": "registry.md",
+      "title": "Cloner Registry",
+      "prev": "manual-helpers.md",
+      "prevLabel": "Manual Helpers",
+      "next": "field-cloners.md",
+      "nextLabel": "Field Cloners"
     },
     {
-      "file": "usage-guide.md",
-      "title": "Usage Guide",
-      "prev": "api-reference.md",
-      "prevLabel": "API Reference",
-      "next": "advanced.md",
-      "nextLabel": "Advanced"
-    },
-    {
-      "file": "advanced.md",
-      "title": "Advanced Topics",
-      "prev": "usage-guide.md",
-      "prevLabel": "Usage Guide",
+      "file": "field-cloners.md",
+      "title": "Field-Level Cloners",
+      "prev": "registry.md",
+      "prevLabel": "Registry",
       "next": "reflection-engine.md",
       "nextLabel": "Reflection Engine"
     },
     {
       "file": "reflection-engine.md",
       "title": "Reflection Engine",
-      "prev": "advanced.md",
-      "prevLabel": "Advanced",
-      "next": "testing.md",
-      "nextLabel": "Testing & Benchmarks"
+      "prev": "field-cloners.md",
+      "prevLabel": "Field Cloners",
+      "next": "struct-tags.md",
+      "nextLabel": "Struct Tags"
     },
     {
-      "file": "testing.md",
-      "title": "Testing & Benchmarks",
+      "file": "struct-tags.md",
+      "title": "Struct Tags",
       "prev": "reflection-engine.md",
       "prevLabel": "Reflection Engine",
-      "next": "roadmap.md",
-      "nextLabel": "Roadmap"
+      "next": "cycle-policy.md",
+      "nextLabel": "Cycle Policy"
     },
     {
-      "file": "roadmap.md",
-      "title": "Roadmap",
-      "prev": "testing.md",
-      "prevLabel": "Testing & Benchmarks",
-      "next": "INDEX.md",
-      "nextLabel": "Back to Index"
+      "file": "cycle-policy.md",
+      "title": "Cycle & Sharing Policy",
+      "prev": "struct-tags.md",
+      "prevLabel": "Struct Tags",
+      "next": "error-handling.md",
+      "nextLabel": "Error Handling"
+    },
+    {
+      "file": "error-handling.md",
+      "title": "Error Handling",
+      "prev": "cycle-policy.md",
+      "prevLabel": "Cycle Policy",
+      "next": "patterns.md",
+      "nextLabel": "Patterns"
+    },
+    {
+      "file": "patterns.md",
+      "title": "Patterns & Best Practices",
+      "prev": "error-handling.md",
+      "prevLabel": "Error Handling",
+      "next": "benchmarks.md",
+      "nextLabel": "Benchmarks"
+    },
+    {
+      "file": "benchmarks.md",
+      "title": "Benchmarks",
+      "prev": "patterns.md",
+      "prevLabel": "Patterns",
+      "next": "api-reference.md",
+      "nextLabel": "API Reference"
+    },
+    {
+      "file": "api-reference.md",
+      "title": "API Reference",
+      "prev": "benchmarks.md",
+      "prevLabel": "Benchmarks",
+      "next": "",
+      "nextLabel": ""
     }
   ]
 }

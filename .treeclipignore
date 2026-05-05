@@ -50,3 +50,4 @@ bin
 coverage.out
 bench.txt
 benchstat.txt
+old_docs

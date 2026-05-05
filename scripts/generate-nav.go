@@ -37,12 +37,14 @@ const navStartMarker = "<!-- Navigation (AUTO-GENERATED - DO NOT EDIT) -->"
 //go:embed navigation.html
 var navTemplateStr string
 
+const docsDir = "docs"
+
 // -------------------------------------------- Main --------------------------------------------
 
 // main is the entry point. Loads navigation.json, evaluates the template for each doc,
 // and writes the result back to the markdown file only if content actually changed.
 func main() {
-	config, err := loadConfig("docs/navigation.json")
+	config, err := loadConfig(fmt.Sprintf("%s/navigation.json", docsDir))
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "❌ Error loading config: %v\n", err)
 		os.Exit(1)
@@ -90,7 +92,7 @@ func loadConfig(path string) (*NavConfig, error) {
 // injectNavigation reads a markdown file, strips any existing auto-generated navigation,
 // renders the new navigation block, and writes it back only if content changed.
 func injectNavigation(filename string, tmpl *template.Template, data any) error {
-	filePath := filepath.Join("docs", filename)
+	filePath := filepath.Join(docsDir, filename)
 	original, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("read file: %w", err)

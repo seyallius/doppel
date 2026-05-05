@@ -1,7 +1,7 @@
 # doppel Docs Sidebar
 
 - **🏠 Home**
-    - [README](../README.md)
+    - [README](README.md)
     - [Documentation Index](./INDEX.md)
 
 - **🎯 Getting Started**

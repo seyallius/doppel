@@ -121,39 +121,39 @@ Use `benchstat` (from `golang.org/x/perf/cmd/benchstat`) for statistically signi
 
 - **[API Reference](api-reference.md)** — Complete function and type signatures.
 
+<!-- Navigation (AUTO-GENERATED - DO NOT EDIT) -->
+
 ---
 
 <div style="margin-top: 3rem; margin-bottom: 1rem; padding: 2rem 1.5rem; border-top: 2px solid #1e293b; border-radius: 12px; background: linear-gradient(145deg, #0f172a, #0b111c);">
     <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #e1e4e8; text-align: center; color: #586069; font-size: 0.85rem;">
-        doppel Documentation &bull; Benchmarks
+        📚 doppel Documentation • Benchmarks
     </div>
     <div style="display: flex; justify-content: space-between; align-items: stretch; gap: 1.5rem; flex-wrap: wrap; margin-top: 1.5rem;">
-        <div style="flex: 1; min-width: 200px;">
-            <a href="struct-tags.md" style="display: flex; align-items: center; gap: 0.75rem; padding: 1rem 1.5rem; background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; line-height: 1.4; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);">
-                <span style="font-size: 1.2rem; font-weight: 700; line-height: 1;">&#8592;</span>
+        <div style="flex: 1; min-width: 200px;"><a href="struct-tags.md" style="display: flex; align-items: center; gap: 0.75rem; padding: 1rem 1.5rem; background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; line-height: 1.4; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);">
+                <span style="font-size: 1.2rem; font-weight: 700; line-height: 1;">←</span>
                 <span style="display: flex; flex-direction: column; line-height: 1.3;">
                     <span style="font-size: 0.7rem; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Previous</span>
                     <span style="font-size: 1rem; font-weight: 600;">Struct Tags</span>
                 </span>
-            </a>
-        </div>
+            </a></div>
         <div style="flex: 1; min-width: 200px; display: flex; justify-content: center; align-items: center;">
             <a href="INDEX.md" style="display: flex; align-items: center; justify-content: center; gap: 0.75rem; padding: 1rem 1.5rem; background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; line-height: 1.4; box-shadow: 0 2px 4px rgba(139, 92, 246, 0.3); text-align: center;">
-                <span style="font-size: 1.2rem; font-weight: 700; line-height: 1;">&#8962;</span>
+                <span style="font-size: 1.2rem; font-weight: 700; line-height: 1;">⌂</span>
                 <span style="display: flex; flex-direction: column; line-height: 1.3;">
                     <span style="font-size: 0.7rem; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Return to</span>
                     <span style="font-size: 1rem; font-weight: 600;">Index</span>
                 </span>
             </a>
         </div>
-        <div style="flex: 1; min-width: 200px; display: flex; justify-content: flex-end;">
-            <a href="api-reference.md" style="display: flex; align-items: center; justify-content: flex-end; gap: 0.75rem; padding: 1rem 1.5rem; background: linear-gradient(135deg, #10b981, #047857); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; line-height: 1.4; text-align: right; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);">
+        <div style="flex: 1; min-width: 200px; display: flex; justify-content: flex-end;"><a href="api-reference.md" style="display: flex; align-items: center; justify-content: flex-end; gap: 0.75rem; padding: 1rem 1.5rem; background: linear-gradient(135deg, #10b981, #047857); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; line-height: 1.4; text-align: right; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);">
                 <span style="display: flex; flex-direction: column; line-height: 1.3;">
                     <span style="font-size: 0.7rem; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Next</span>
                     <span style="font-size: 1rem; font-weight: 600;">API Reference</span>
                 </span>
-                <span style="font-size: 1.2rem; font-weight: 700; line-height: 1;">&#8594;</span>
-            </a>
-        </div>
+                <span style="font-size: 1.2rem; font-weight: 700; line-height: 1;">→</span>
+            </a></div>
     </div>
 </div>
+<!-- /Navigation -->
+

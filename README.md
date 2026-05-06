@@ -20,12 +20,12 @@ Go assignment is a shallow copy. Structs with pointer fields, slices, and maps s
 
 ## Why doppel?
 
-| Principle        | What it means                                                             |
-|------------------|---------------------------------------------------------------------------|
-| **Manual first** | No reflection, no magic, maximum speed. You write the clone logic.        |
-| **Composable**   | `CloneSlice`, `CloneMap`, `ClonePointer` wire together in your `Clone()`. |
-| **Explicit**     | Every clone path is visible and auditable — no hidden behavior.           |
-| **Future-proof** | Struct tags prepare for automatic code generation (coming soon).          |
+| Principle           | What it means                                                             |
+|---------------------|---------------------------------------------------------------------------|
+| **Manual first**    | No reflection, no magic, maximum speed. You write the clone logic.        |
+| **Composable**      | `CloneSlice`, `CloneMap`, `ClonePointer` wire together in your `Clone()`. |
+| **Explicit**        | Every clone path is visible and auditable — no hidden behavior.           |
+| **Code generation** | Struct tags prepare for automatic code generation.                        |
 
 ---
 
@@ -113,6 +113,30 @@ Requires **Go 1.25** or later. Zero external dependencies.
 - **Thread-safe** — all public types are safe for concurrent use
 - **Struct tags** — `doppel:"-"`, `doppel:"shallow"`, `doppel:"clone"`, `doppel:"deep"` for future generator
 - **Zero dependencies** — only the Go standard library
+
+---
+
+## Code Generation with doppelgen
+
+doppelgen reads your Go source files, finds structs annotated with
+`doppel:"..."` tags, and generates `*_clone.gen.go` files that implement
+`SelfClonable[T]`.
+
+### Quick start
+
+```go
+//go:generate go run github.com/seyallius/doppel/cmd/doppelgen -type=MyStruct
+```
+
+### Flags
+
+| Flag     | Description                              |
+|----------|------------------------------------------|
+| -type    | Comma-separated struct names             |
+| -package | Output package name (default: same)      |
+| -output  | Output directory                         |
+| -tag     | Custom struct tag name (default: doppel) |
+| -preview | Print generated code to stdout           |
 
 ---
 

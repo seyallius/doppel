@@ -28,6 +28,11 @@ test-coverage:
     go test -coverprofile=coverage.out ./...
     go tool cover -html=coverage.out
 
+# Build doppelgen binary file
+[group('Development')]
+build-doppelgen:
+    go build -o bin/ ./cmd/doppelgen/
+
 # ----------------------------------------------------------------
 # Benchmark
 # ----------------------------------------------------------------

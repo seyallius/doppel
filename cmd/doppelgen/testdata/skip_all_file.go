@@ -1,13 +1,15 @@
+// Package testdata — this entire file is opted out of generation via doppel:skip-all.
+// All struct types in this file should be skipped.
+//
 // doppel:skip-all
 package testdata
 
-// SkippedInFile should not be generated.
+// SkippedInFile should be skipped because the file has doppel:skip-all.
 type SkippedInFile struct {
-	Name  string `doppel:"deep"`
-	Value int    `doppel:"deep"`
+	Name string `doppel:"deep"`
 }
 
-// AlsoSkippedInFile should not be generated either.
+// AlsoSkippedInFile should also be skipped for the same reason.
 type AlsoSkippedInFile struct {
-	Data []string `doppel:"deep"`
+	Value int `doppel:"deep"`
 }

@@ -163,7 +163,9 @@ func (e *Emitter) emitCloneMethod(info *types.StructInfo) error {
 	// Per-field clone logic.
 	var fieldNames []string
 	for _, field := range info.Fields {
-		fieldNames = append(fieldNames, field.Name)
+		if !field.Directive.Skip {
+			fieldNames = append(fieldNames, field.Name)
+		}
 
 		if err := e.emitFieldClone(field, info.Name); err != nil {
 			return fmt.Errorf("field %s: %w", field.Name, err)

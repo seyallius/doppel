@@ -5,8 +5,13 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/seyallius/doppel/cmd/doppelgen/internal/parser"
+	"github.com/seyallius/doppel/cmd/doppelgen/internal/types"
 	"github.com/seyallius/doppel/core"
 )
+
+// Compile-time interface check: types.TypeInfo must be usable with parser.FilterStructs.
+var _ types.TypeInfo = nil
 
 func testdataPath(t *testing.T) string {
 	t.Helper()
@@ -18,9 +23,11 @@ func testdataPath(t *testing.T) string {
 	return filepath.Join(wd, "..", "..", "testdata")
 }
 
+// -------------------------------------------- Tests --------------------------------------------
+
 func TestParsePackage(t *testing.T) {
 	td := testdataPath(t)
-	result, err := ParsePackage(td, "doppel")
+	result, err := parser.ParsePackage(td, "doppel")
 	if err != nil {
 		t.Fatalf("ParsePackage failed: %v", err)
 	}
@@ -36,7 +43,7 @@ func TestParsePackage(t *testing.T) {
 
 func TestParsePackage_BasicUser(t *testing.T) {
 	td := testdataPath(t)
-	result, err := ParsePackage(td, "doppel")
+	result, err := parser.ParsePackage(td, "doppel")
 	if err != nil {
 		t.Fatalf("ParsePackage failed: %v", err)
 	}
@@ -65,7 +72,7 @@ func TestParsePackage_BasicUser(t *testing.T) {
 
 func TestParsePackage_TagResolution(t *testing.T) {
 	td := testdataPath(t)
-	result, err := ParsePackage(td, "doppel")
+	result, err := parser.ParsePackage(td, "doppel")
 	if err != nil {
 		t.Fatalf("ParsePackage failed: %v", err)
 	}
@@ -75,11 +82,7 @@ func TestParsePackage_TagResolution(t *testing.T) {
 	for _, field := range info.Fields {
 		switch field.Name {
 		case "ID", "Name":
-			if field.Directive != core.TagDirective {
-			Deep:
-				true
-			}
-			{
+			if !field.Directive.Deep {
 				t.Errorf("field %s: expected default Deep directive, got %+v", field.Name, field.Directive)
 			}
 		case "Tags":
@@ -104,7 +107,7 @@ func TestParsePackage_TagResolution(t *testing.T) {
 
 func TestParsePackage_TypeCategories(t *testing.T) {
 	td := testdataPath(t)
-	result, err := ParsePackage(td, "doppel")
+	result, err := parser.ParsePackage(td, "doppel")
 	if err != nil {
 		t.Fatalf("ParsePackage failed: %v", err)
 	}
@@ -138,7 +141,7 @@ func TestParsePackage_TypeCategories(t *testing.T) {
 
 func TestParsePackage_ExistingCloneSkipped(t *testing.T) {
 	td := testdataPath(t)
-	result, err := ParsePackage(td, "doppel")
+	result, err := parser.ParsePackage(td, "doppel")
 	if err != nil {
 		t.Fatalf("ParsePackage failed: %v", err)
 	}
@@ -157,7 +160,7 @@ func TestParsePackage_ExistingCloneSkipped(t *testing.T) {
 
 func TestParsePackage_SkipGenComment(t *testing.T) {
 	td := testdataPath(t)
-	result, err := ParsePackage(td, "doppel")
+	result, err := parser.ParsePackage(td, "doppel")
 	if err != nil {
 		t.Fatalf("ParsePackage failed: %v", err)
 	}
@@ -173,7 +176,7 @@ func TestParsePackage_SkipGenComment(t *testing.T) {
 
 func TestParsePackage_SkipAllFile(t *testing.T) {
 	td := testdataPath(t)
-	result, err := ParsePackage(td, "doppel")
+	result, err := parser.ParsePackage(td, "doppel")
 	if err != nil {
 		t.Fatalf("ParsePackage failed: %v", err)
 	}
@@ -192,7 +195,7 @@ func TestParsePackage_SkipAllFile(t *testing.T) {
 
 func TestParsePackage_UnexportedSkipped(t *testing.T) {
 	td := testdataPath(t)
-	result, err := ParsePackage(td, "doppel")
+	result, err := parser.ParsePackage(td, "doppel")
 	if err != nil {
 		t.Fatalf("ParsePackage failed: %v", err)
 	}
@@ -206,28 +209,14 @@ func TestParsePackage_UnexportedSkipped(t *testing.T) {
 }
 
 func TestResolveDependencies(t *testing.T) {
-	structs := map[string]*struct {
-		Name   string
-		Fields []struct {
-			Name     string
-			Type     string
-			Category int // we can't use types.TypeCategory directly in test
-		}
-	}{
-		"Address": {Name: "Address"},
-		"User":    {Name: "User"},
-	}
-
-	// For this test, we need to use real types.TypeInfo.
-	// Let's test with FilterStructs instead.
 	td := testdataPath(t)
-	result, err := ParsePackage(td, "doppel")
+	result, err := parser.ParsePackage(td, "doppel")
 	if err != nil {
 		t.Fatalf("ParsePackage failed: %v", err)
 	}
 
-	filtered := FilterStructs(result.Structs, nil)
-	sorted, err := ResolveDependencies(filtered)
+	filtered := parser.FilterStructs(result.Structs, nil)
+	sorted, err := parser.ResolveDependencies(filtered)
 	if err != nil {
 		t.Fatalf("ResolveDependencies failed: %v", err)
 	}
@@ -251,13 +240,13 @@ func TestResolveDependencies(t *testing.T) {
 
 func TestFilterStructs(t *testing.T) {
 	td := testdataPath(t)
-	result, err := ParsePackage(td, "doppel")
+	result, err := parser.ParsePackage(td, "doppel")
 	if err != nil {
 		t.Fatalf("ParsePackage failed: %v", err)
 	}
 
 	// Filter to specific types.
-	filtered := FilterStructs(result.Structs, []string{"BasicUser", "Address"})
+	filtered := parser.FilterStructs(result.Structs, []string{"BasicUser", "Address"})
 	if len(filtered) != 2 {
 		t.Errorf("expected 2 structs, got %d", len(filtered))
 	}
@@ -271,13 +260,13 @@ func TestFilterStructs(t *testing.T) {
 
 func TestFilterStructs_SkippedExcluded(t *testing.T) {
 	td := testdataPath(t)
-	result, err := ParsePackage(td, "doppel")
+	result, err := parser.ParsePackage(td, "doppel")
 	if err != nil {
 		t.Fatalf("ParsePackage failed: %v", err)
 	}
 
 	// Filter all (empty list) — should exclude skipped.
-	filtered := FilterStructs(result.Structs, nil)
+	filtered := parser.FilterStructs(result.Structs, nil)
 	for _, info := range filtered {
 		if info.Skip {
 			t.Errorf("skipped type %q should not be in filtered result", info.Name)
@@ -287,7 +276,7 @@ func TestFilterStructs_SkippedExcluded(t *testing.T) {
 
 func TestParsePackage_PointerPrimitives(t *testing.T) {
 	td := testdataPath(t)
-	result, err := ParsePackage(td, "doppel")
+	result, err := parser.ParsePackage(td, "doppel")
 	if err != nil {
 		t.Fatalf("ParsePackage failed: %v", err)
 	}
@@ -310,7 +299,7 @@ func TestParsePackage_PointerPrimitives(t *testing.T) {
 
 func TestParsePackage_EmptyTag(t *testing.T) {
 	td := testdataPath(t)
-	result, err := ParsePackage(td, "doppel")
+	result, err := parser.ParsePackage(td, "doppel")
 	if err != nil {
 		t.Fatalf("ParsePackage failed: %v", err)
 	}

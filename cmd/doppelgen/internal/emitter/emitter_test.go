@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/seyallius/doppel/cmd/doppelgen/internal/emitter"
 	"github.com/seyallius/doppel/cmd/doppelgen/internal/types"
 	"github.com/seyallius/doppel/core"
 )
@@ -27,7 +28,7 @@ func TestGenerate_BasicUser(t *testing.T) {
 		},
 	}
 
-	code, err := Generate(info)
+	code, err := emitter.Generate(info)
 	if err != nil {
 		t.Fatalf("Generate failed: %v", err)
 	}
@@ -82,7 +83,7 @@ func TestGenerate_Address(t *testing.T) {
 		},
 	}
 
-	code, err := Generate(info)
+	code, err := emitter.Generate(info)
 	if err != nil {
 		t.Fatalf("Generate failed: %v", err)
 	}
@@ -113,7 +114,7 @@ func TestGenerate_NestedUser(t *testing.T) {
 		},
 	}
 
-	code, err := Generate(info)
+	code, err := emitter.Generate(info)
 	if err != nil {
 		t.Fatalf("Generate failed: %v", err)
 	}
@@ -155,7 +156,7 @@ func TestGenerate_EmptyFields(t *testing.T) {
 		},
 	}
 
-	code, err := Generate(info)
+	code, err := emitter.Generate(info)
 	if err != nil {
 		t.Fatalf("Generate failed: %v", err)
 	}
@@ -194,7 +195,7 @@ func TestGenerate_PointerPrimitives(t *testing.T) {
 		},
 	}
 
-	code, err := Generate(info)
+	code, err := emitter.Generate(info)
 	if err != nil {
 		t.Fatalf("Generate failed: %v", err)
 	}
@@ -217,9 +218,9 @@ func TestGenerate_PointerPrimitives(t *testing.T) {
 		t.Error("missing Shallow direct assignment")
 	}
 
-	// Empty pointer should be &string{}.
-	if !containsStr(code, "EmptyP := &string{}") {
-		t.Error("missing EmptyP empty pointer literal")
+	// Empty pointer-to-primitive is treated as primitive category — direct assignment.
+	if !containsStr(code, "EmptyP := x.EmptyP") {
+		t.Error("missing EmptyP direct assignment (pointer-to-primitive with empty tag)")
 	}
 }
 
@@ -236,13 +237,13 @@ func TestGenerate_CloneTag(t *testing.T) {
 		},
 	}
 
-	code, err := Generate(info)
+	code, err := emitter.Generate(info)
 	if err != nil {
 		t.Fatalf("Generate failed: %v", err)
 	}
 
 	// Should call convention-based clone function.
-	if !containsStr(code, "cloneCloneTagUserProfile(x.Profile)") {
+	if !containsStr(code, "CloneCloneTagUserProfile(x.Profile)") {
 		t.Error("missing convention-based clone function call")
 	}
 	if !containsStr(code, `WrapError("CloneTagUser.Profile", err)`) {
@@ -263,7 +264,7 @@ func TestGeneratePreview(t *testing.T) {
 		},
 	}
 
-	code := GeneratePreview(info)
+	code := emitter.GeneratePreview(info)
 	if code == "" {
 		t.Error("GeneratePreview returned empty string")
 	}
@@ -290,7 +291,7 @@ func TestGoldenFile_BasicUser(t *testing.T) {
 		},
 	}
 
-	code, err := Generate(info)
+	code, err := emitter.Generate(info)
 	if err != nil {
 		t.Fatalf("Generate failed: %v", err)
 	}

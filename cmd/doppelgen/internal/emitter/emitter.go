@@ -1,10 +1,12 @@
 // Package emitter. emitter.go - Generates Go source code for Clone() method implementations
-// from parsed struct definitions and their doppel struct tags.
+// from parsed struct definitions and their doppel struct tags, and applies gofmt-style
+// formatting to ensure idiomatic output.
 package emitter
 
 import (
 	"bytes"
 	"fmt"
+	"go/format"
 	"sort"
 	"strings"
 
@@ -23,8 +25,9 @@ type Emitter struct {
 
 // -------------------------------------------- Public API --------------------------------------------
 
-// Generate produces the complete Go source file content for a Clone() method implementation of the given struct.
-// It handles header comments, package declaration, imports, and the method body.
+// Generate produces the complete Go source file content for a Clone() method implementation.
+// It builds the AST-equivalent string, collects imports, emits the method body, and applies
+// gofmt-style formatting before returning the final string. Returns an error if formatting fails.
 func Generate(structInfo *types.StructInfo) (string, error) {
 	e := &Emitter{
 		imports: make(map[string]types.ImportSpec),
@@ -41,12 +44,17 @@ func Generate(structInfo *types.StructInfo) (string, error) {
 	if err := e.emitCloneMethod(structInfo); err != nil {
 		return "", fmt.Errorf("emit Clone() for %s: %w", structInfo.Name, err)
 	}
-
-	return strings.TrimSpace(e.buf.String()) + "\n", nil
+	raw := strings.TrimSpace(e.buf.String()) + "\n"
+	// Format the generated source using Go's standard formatter.
+	formatted, err := format.Source([]byte(raw))
+	if err != nil {
+		return raw, fmt.Errorf("format generated code for %s: %w", structInfo.Name, err)
+	}
+	return string(formatted), nil
 }
 
 // GeneratePreview returns a human-readable preview of what would be generated.
-// Useful for CLI dry-runs without writing to disk.
+// Useful for CLI dry-runs without writing to disk. Applies the same formatting as Generate().
 func GeneratePreview(structInfo *types.StructInfo) string {
 	code, err := Generate(structInfo)
 	if err != nil {
@@ -54,6 +62,8 @@ func GeneratePreview(structInfo *types.StructInfo) string {
 	}
 	return code
 }
+
+// -------------------------------------------- Internal Helpers --------------------------------------------
 
 // -------------------------------------------- Header --------------------------------------------
 
@@ -109,13 +119,8 @@ func (e *Emitter) collectImports(info *types.StructInfo) {
 		}
 
 		switch field.TypeCategory {
-		case types.CatSlice, types.CatMap, types.CatPtrPrimitive:
+		case types.CatSlice, types.CatMap, types.CatPtrPrimitive, types.CatPtrStruct:
 			e.addImport("github.com/seyallius/doppel/manual")
-		case types.CatPtrStruct:
-			e.addImport("github.com/seyallius/doppel/manual")
-		case types.CatStruct:
-			// If a struct field calls .Clone(), no manual import needed
-			// unless it goes through a helper.
 		}
 	}
 
@@ -168,8 +173,7 @@ func (e *Emitter) emitCloneMethod(info *types.StructInfo) error {
 	// Return statement.
 	e.emitBlankLine()
 	e.emitLine("// Construct and return the clone.")
-	returnLine := fmt.Sprintf("return &%s{", info.Name)
-	e.emitRaw(returnLine)
+	e.emitRaw(fmt.Sprintf("return &%s{", info.Name))
 	e.indent++
 
 	for _, name := range fieldNames {

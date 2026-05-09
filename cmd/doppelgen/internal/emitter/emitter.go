@@ -248,11 +248,11 @@ func (e *Emitter) emitEmptyField(field types.FieldInfo, structName string) error
 	return nil
 }
 
-// emitCloneTagField generates a call to a convention-based clone function (e.g., cloneUserProfile).
+// emitCloneTagField generates a call to a convention-based clone function (e.g., CloneUserProfile).
 func (e *Emitter) emitCloneTagField(field types.FieldInfo, structName string) error {
 	e.emitLine(fmt.Sprintf("// Field: %s (tag: clone) — convention-based clone function.", field.Name))
 
-	cloneFn := fmt.Sprintf("clone%s%s", structName, field.Name)
+	cloneFn := fmt.Sprintf("Clone%s%s", structName, field.Name)
 	e.emitRaw(fmt.Sprintf("%s, err := %s(x.%s)", field.Name, cloneFn, field.Name))
 	e.emitRaw("if err != nil {")
 	e.indent++

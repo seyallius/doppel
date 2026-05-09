@@ -75,15 +75,15 @@ The code generator emits calls to `manual.CloneSlice`, `manual.CloneMap`, or
 
 Instructs the code generator to call a **convention-named** function instead
 of using a built-in helper. The function must be named
-`clone<StructName><FieldName>` and be visible in the same package:
+`Clone<StructName><FieldName>` and be visible in the same package:
 
 ```go
 type User struct {
     Profile *Profile `doppel:"clone"`
 }
 
-// Convention name: clone + struct name + field name
-func cloneUserProfile(src *Profile) (*Profile, error) {
+// Convention name: Clone + struct name + field name
+func CloneUserProfile(src *Profile) (*Profile, error) {
     // custom clone logic here
 }
 ```

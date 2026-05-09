@@ -1,3 +1,5 @@
+// Package main. cli.go - Handles command-line flag parsing, validation,
+// and configuration mapping for the doppelgen tool.
 package main
 
 import (
@@ -9,6 +11,12 @@ import (
 	"github.com/seyallius/doppel/cmd/doppelgen/internal/types"
 )
 
+// -------------------------------------------- Public API --------------------------------------------
+
+// parseFlags parses the provided CLI arguments and returns a fully populated GeneratorConfig.
+// It registers flags for type filtering, package targeting, output directory, preview mode, and custom tag keys.
+// If type names are provided, they are validated against Go identifier rules.
+// Returns an error if flag parsing fails or if any type name is invalid.
 func parseFlags(args []string) (*types.GeneratorConfig, error) {
 	fs := flag.NewFlagSet("doppelgen", flag.ContinueOnError)
 
@@ -50,6 +58,10 @@ func parseFlags(args []string) (*types.GeneratorConfig, error) {
 	return cfg, nil
 }
 
+// -------------------------------------------- Internal Helpers --------------------------------------------
+
+// splitComma splits a comma-separated string into a sorted slice of trimmed, non-empty strings.
+// It safely handles extra whitespace and ignores empty segments.
 func splitComma(s string) []string {
 	var result []string
 	for _, part := range strings.Split(s, ",") {
@@ -62,6 +74,8 @@ func splitComma(s string) []string {
 	return result
 }
 
+// isValidGoIdent checks whether the provided string conforms to Go's identifier syntax rules.
+// Identifiers must start with a letter, followed by any number of letters, digits, or underscores.
 func isValidGoIdent(s string) bool {
 	if s == "" {
 		return false

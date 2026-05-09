@@ -1,5 +1,5 @@
-// Package parser reads Go source files, extracts struct definitions with
-// doppel struct tags, and resolves type information for code generation.
+// Package parser. parser.go reads Go source files, extracts struct definitions with doppel struct tags,
+// resolves type information, and builds dependency graphs for safe code generation.
 //
 // It uses go/ast and go/token for parsing — no external dependencies.
 package parser
@@ -17,22 +17,16 @@ import (
 	"github.com/seyallius/doppel/core"
 )
 
-// -------------------------------------------- Constants --------------------------------------------
+// -------------------------------------------- Types, Variables & Constants --------------------------------------------
 
 const (
-	// skipGenComment is the opt-out marker for individual struct types.
-	skipGenComment = "doppel:skip-gen"
-
-	// skipAllComment is the opt-out marker for entire files.
-	skipAllComment = "doppel:skip-all"
-
-	// skipGenerateComment is the alternative opt-out marker (go:generate convention).
-	skipGenerateComment = "go:generate doppelgen -skip"
+	skipGenComment      = "doppel:skip-gen"             // skipGenComment is the opt-out marker for individual struct types.
+	skipAllComment      = "doppel:skip-all"             // skipAllComment is the opt-out marker for entire files.
+	skipGenerateComment = "go:generate doppelgen -skip" // skipGenerateComment is the alternative opt-out marker (go:generate convention).
 )
 
-// -------------------------------------------- Types --------------------------------------------
-
-// ParseResult holds the complete output of a parse run.
+// ParseResult holds the complete output of a parse run, including discovered structs,
+// package metadata, file counts, and any types that were intentionally skipped.
 type ParseResult struct {
 	Structs   types.TypeInfo // all discovered structs keyed by name
 	Package   string         // package name
@@ -40,7 +34,7 @@ type ParseResult struct {
 	Skipped   []SkipInfo     // types that were skipped and why
 }
 
-// SkipInfo records why a type was skipped from generation.
+// SkipInfo records why a type was skipped from generation, providing context for debugging or reporting.
 type SkipInfo struct {
 	TypeName string
 	Reason   string
@@ -49,8 +43,9 @@ type SkipInfo struct {
 
 // -------------------------------------------- Public API --------------------------------------------
 
-// ParsePackage parses all .go files in the given directory and returns
-// the discovered struct types with their doppel tag information.
+// ParsePackage parses all .go files in the given directory and returns the discovered struct types
+// with their doppel tag information. It handles multi-package edge cases by selecting the first
+// non-test package if multiple are found.
 func ParsePackage(dir string, tagKey string) (*ParseResult, error) {
 	fset := token.NewFileSet()
 	pkgs, err := parser.ParseDir(fset, dir, nil, parser.ParseComments)
@@ -77,7 +72,8 @@ func ParsePackage(dir string, tagKey string) (*ParseResult, error) {
 	return nil, fmt.Errorf("no packages found in %q", dir)
 }
 
-// ParseFiles parses specific Go files and returns discovered struct types.
+// ParseFiles parses specific Go files by path and returns discovered struct types.
+// Useful for targeted generation or when bypassing directory-based package resolution.
 func ParseFiles(files []string, tagKey string) (*ParseResult, error) {
 	fset := token.NewFileSet()
 	var astFiles []*ast.File
@@ -97,8 +93,8 @@ func ParseFiles(files []string, tagKey string) (*ParseResult, error) {
 	return parseASTFiles(fset, astFiles, tagKey)
 }
 
-// HasExistingClone checks whether a struct type already has a Clone() method
-// defined in the parsed files.
+// HasExistingClone checks whether a struct type already has a Clone() method defined in the parsed files.
+// This prevents the generator from overwriting user-defined implementations.
 func (r *ParseResult) HasExistingClone(typeName string) bool {
 	// This is populated during parsing via method detection.
 	// The parser marks structs with existing Clone() methods.
@@ -110,6 +106,7 @@ func (r *ParseResult) HasExistingClone(typeName string) bool {
 
 // -------------------------------------------- Internal --------------------------------------------
 
+// parsePackageFiles converts an ast.Package into a slice of ast.File and delegates to parseASTFiles.
 func parsePackageFiles(fset *token.FileSet, pkg *ast.Package, dir string, tagKey string) (*ParseResult, error) {
 	var files []*ast.File
 	for _, f := range pkg.Files {
@@ -118,6 +115,8 @@ func parsePackageFiles(fset *token.FileSet, pkg *ast.Package, dir string, tagKey
 	return parseASTFiles(fset, files, tagKey)
 }
 
+// parseASTFiles iterates over a slice of AST files, extracts struct declarations, resolves tags,
+// categorizes field types, and builds the final ParseResult.
 func parseASTFiles(fset *token.FileSet, files []*ast.File, tagKey string) (*ParseResult, error) {
 	result := &ParseResult{
 		Structs: make(types.TypeInfo),
@@ -216,8 +215,8 @@ func parseASTFiles(fset *token.FileSet, files []*ast.File, tagKey string) (*Pars
 	return result, nil
 }
 
-// collectExistingCloneMethods scans all files for method declarations
-// named Clone with pointer receiver, recording which types have them.
+// collectExistingCloneMethods scans all files for method declarations named Clone with a pointer receiver,
+// recording which types already have a Clone implementation.
 func collectExistingCloneMethods(files []*ast.File) map[string]bool {
 	result := make(map[string]bool)
 
@@ -245,8 +244,8 @@ func collectExistingCloneMethods(files []*ast.File) map[string]bool {
 	return result
 }
 
-// extractReceiverTypeName extracts the type name from a receiver expression.
-// Handles *T, T, and other simple cases.
+// extractReceiverTypeName extracts the base type name from a receiver expression.
+// Handles pointer receivers (*T) and value receivers (T) by unwrapping StarExpr.
 func extractReceiverTypeName(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.StarExpr:
@@ -258,8 +257,7 @@ func extractReceiverTypeName(expr ast.Expr) string {
 	}
 }
 
-// hasFileSkipComment checks if the file has a package-level doc comment
-// containing the skip-all marker.
+// hasFileSkipComment checks if the file's package-level doc comment contains the skip-all marker.
 func hasFileSkipComment(file *ast.File) bool {
 	if file.Doc == nil {
 		return false
@@ -272,7 +270,7 @@ func hasFileSkipComment(file *ast.File) bool {
 	return false
 }
 
-// collectSkippedTypes adds all struct types in a file as skipped entries.
+// collectSkippedTypes adds all struct types in a file as skipped entries, typically triggered by file-level opt-out comments.
 func collectSkippedTypes(file *ast.File, filePath string, reason string, result *ParseResult) {
 	for _, decl := range file.Decls {
 		genDecl, ok := decl.(*ast.GenDecl)
@@ -304,13 +302,13 @@ func collectSkippedTypes(file *ast.File, filePath string, reason string, result 
 	}
 }
 
-// hasSkipGenComment checks if a doc comment contains the skip-gen marker.
+// hasSkipGenComment checks if a doc comment contains the struct-level skip-gen marker.
 func hasSkipGenComment(doc string) bool {
 	return strings.Contains(doc, skipGenComment) ||
 		strings.Contains(doc, skipGenerateComment)
 }
 
-// extractDocComment extracts the doc comment for a type declaration.
+// extractDocComment extracts the doc comment for a type declaration, preferring type-specific docs over group-level docs.
 func extractDocComment(genDecl *ast.GenDecl, typeSpec *ast.TypeSpec) string {
 	if typeSpec.Doc != nil {
 		return typeSpec.Doc.Text()
@@ -322,7 +320,7 @@ func extractDocComment(genDecl *ast.GenDecl, typeSpec *ast.TypeSpec) string {
 }
 
 // parseField converts an ast.Field into one or more FieldInfo entries.
-// A single ast.Field can declare multiple names (e.g., `x, y int`).
+// A single ast.Field can declare multiple names (e.g., `x, y int`). It resolves tags, categorizes types, and filters unexported fields.
 func parseField(field *ast.Field, structName string, filePath string, tagKey string) []types.FieldInfo {
 	var result []types.FieldInfo
 
@@ -366,8 +364,8 @@ func parseField(field *ast.Field, structName string, filePath string, tagKey str
 	return result
 }
 
-// resolveTypeCategory analyzes the field's Go type string and sets
-// the TypeCategory and related fields (ElemType, KeyType, etc.).
+// resolveTypeCategory analyzes the field's Go type string and sets the TypeCategory and related metadata.
+// This drives which cloning strategy (deep, shallow, empty, etc.) the emitter will use.
 func resolveTypeCategory(fi *types.FieldInfo) {
 	t := fi.Type
 
@@ -422,7 +420,8 @@ func resolveTypeCategory(fi *types.FieldInfo) {
 	fi.TypeCategory = types.CatUnknown
 }
 
-// parseMapType extracts key and value types from "map[K]V" string.
+// parseMapType extracts key and value types from a "map[K]V" string representation.
+// It safely handles nested brackets in complex key types.
 func parseMapType(s string) (string, string) {
 	// s = "map[K]V"
 	// Find matching bracket.
@@ -441,7 +440,8 @@ func parseMapType(s string) (string, string) {
 	return s[start:], ""
 }
 
-// formatType converts an ast.Expr to its Go type string representation.
+// formatType converts an ast.Expr into its canonical Go type string representation.
+// Handles identifiers, pointers, arrays, maps, interfaces, selectors, and anonymous structs.
 func formatType(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.Ident:
@@ -467,8 +467,8 @@ func formatType(expr ast.Expr) string {
 	}
 }
 
-// reflectTagValue extracts the value for the given tag key from a raw struct tag string.
-// tagKey is the key to look up (e.g., "doppel").
+// reflectTagValue extracts the value for a given tag key from a raw struct tag string.
+// Manually parses the `key:"value"` format to avoid importing reflect at runtime.
 func reflectTagValue(rawTag, tagKey string) string {
 	// Strip backticks.
 	rawTag = strings.Trim(rawTag, "`")
@@ -531,7 +531,7 @@ func reflectTagValue(rawTag, tagKey string) string {
 	return ""
 }
 
-// embeddedFieldName extracts a name for an embedded field.
+// embeddedFieldName extracts a fallback name for an embedded (anonymous) field.
 func embeddedFieldName(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.Ident:
@@ -545,7 +545,7 @@ func embeddedFieldName(expr ast.Expr) string {
 	}
 }
 
-// isExported reports whether the identifier is exported (starts with uppercase).
+// isExported reports whether the identifier starts with an uppercase letter, indicating it is exported.
 func isExported(name string) bool {
 	if name == "" {
 		return false
@@ -554,7 +554,7 @@ func isExported(name string) bool {
 	return unicode.IsUpper(r[0])
 }
 
-// isBuiltinPrimitive reports whether the type name is a Go builtin primitive type.
+// isBuiltinPrimitive reports whether the type name matches a Go builtin primitive type.
 func isBuiltinPrimitive(t string) bool {
 	switch t {
 	case "bool", "byte", "complex64", "complex128",
@@ -587,9 +587,8 @@ func isValidIdent(s string) bool {
 	return true
 }
 
-// ResolveDependencies builds a dependency graph from the parsed structs and
-// returns a topologically sorted list of struct names (inner types first).
-// It detects circular dependencies and returns an error if found.
+// ResolveDependencies builds a dependency graph from the parsed structs and returns a topologically sorted list.
+// Inner/dependent types appear first to ensure safe generation order. Detects circular dependencies.
 func ResolveDependencies(structs types.TypeInfo) ([]string, error) {
 	// Build adjacency list: typeName -> set of dependency type names.
 	deps := make(map[string]map[string]bool)
@@ -704,7 +703,7 @@ func FilterStructs(structs types.TypeInfo, typeNames []string) types.TypeInfo {
 	return result
 }
 
-// HasDoppelTag reports whether a struct has any fields with doppel tags.
+// HasDoppelTag reports whether a struct contains at least one field with a non-empty doppel tag.
 func HasDoppelTag(info *types.StructInfo) bool {
 	for _, field := range info.Fields {
 		if field.Tag != "" {

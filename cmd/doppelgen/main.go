@@ -1,4 +1,4 @@
-// Package main implements the doppelgen CLI tool — a code generator that reads
+// Package main. main.go - Implements the doppelgen CLI tool — a code generator that reads
 // Go source files with doppel struct tags and emits Clone() method implementations.
 //
 // Usage:
@@ -20,6 +20,8 @@ import (
 
 // -------------------------------------------- Main --------------------------------------------
 
+// main is the entry point for the doppelgen CLI. It delegates execution to run() and handles
+// top-level error printing and exit codes.
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "doppelgen: %v\n", err)
@@ -27,6 +29,8 @@ func main() {
 	}
 }
 
+// run orchestrates the CLI workflow: flag parsing, directory resolution, AST parsing,
+// dependency sorting, code generation, and file output (or preview).
 func run(args []string) error {
 	cfg, err := parseFlags(args)
 	if err != nil {

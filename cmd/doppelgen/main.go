@@ -16,33 +16,29 @@ import (
 
 	"github.com/seyallius/doppel/cmd/doppelgen/internal/emitter"
 	"github.com/seyallius/doppel/cmd/doppelgen/internal/parser"
+	"github.com/seyallius/doppel/cmd/doppelgen/internal/types"
 )
 
 // -------------------------------------------- Main --------------------------------------------
 
-// main is the entry point for the doppelgen CLI. It delegates execution to run() and handles
-// top-level error printing and exit codes.
+// main is the entry point for the doppelgen CLI. It creates the cobra root command
+// and executes it, handling top-level error printing and exit codes.
 func main() {
-	if err := run(os.Args[1:]); err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "doppelgen: %v\n", err)
+	cmd := newRootCmd()
+	if err := cmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
 
-// run orchestrates the CLI workflow: flag parsing, directory resolution, AST parsing,
+// run orchestrates the CLI workflow: directory resolution, AST parsing,
 // dependency sorting, code generation, and file output (or preview).
-func run(args []string) error {
-	cfg, err := parseFlags(args)
-	if err != nil {
-		return err
-	}
-
+func run(cfg *types.GeneratorConfig) error {
 	// Determine the directory to parse.
 	targetDir := cfg.Package
 	if targetDir == "" {
 		targetDir = "."
 	}
-	targetDir, err = filepath.Abs(targetDir)
+	targetDir, err := filepath.Abs(targetDir)
 	if err != nil {
 		return fmt.Errorf("resolve target directory: %w", err)
 	}
@@ -80,7 +76,6 @@ func run(args []string) error {
 	}
 
 	// Generate Clone() methods.
-	var generated []string
 	for _, typeName := range sorted {
 		info := filtered[typeName]
 		var code string
@@ -94,8 +89,6 @@ func run(args []string) error {
 			_, _ = fmt.Fprintln(os.Stdout, code)
 			_, _ = fmt.Fprintln(os.Stdout)
 		}
-
-		generated = append(generated, code)
 	}
 
 	// Write files unless in preview mode.

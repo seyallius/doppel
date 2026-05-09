@@ -1,25 +1,23 @@
-// Package main. cli.go - Handles command-line flag parsing, validation,
+// Package main. cli.go - Handles cobra command definition, flag registration, validation,
 // and configuration mapping for the doppelgen tool.
 package main
 
 import (
-	"flag"
 	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/seyallius/doppel/cmd/doppelgen/internal/types"
+	"github.com/spf13/cobra"
 )
 
 // -------------------------------------------- Public API --------------------------------------------
 
-// parseFlags parses the provided CLI arguments and returns a fully populated GeneratorConfig.
+// newRootCmd creates and returns the root cobra command for doppelgen.
 // It registers flags for type filtering, package targeting, output directory, preview mode, and custom tag keys.
 // If type names are provided, they are validated against Go identifier rules.
-// Returns an error if flag parsing fails or if any type name is invalid.
-func parseFlags(args []string) (*types.GeneratorConfig, error) {
-	fs := flag.NewFlagSet("doppelgen", flag.ContinueOnError)
-
+// Returns an error during execution if any type name is invalid.
+func newRootCmd() *cobra.Command {
 	var (
 		typeNames string
 		pkg       string
@@ -28,34 +26,42 @@ func parseFlags(args []string) (*types.GeneratorConfig, error) {
 		tag       string
 	)
 
-	fs.StringVar(&typeNames, "type", "", "Comma-separated list of type names to generate (default: all tagged structs)")
-	fs.StringVar(&pkg, "package", "", "Target package directory (default: current directory)")
-	fs.StringVar(&output, "output", "", "Output directory for generated files (default: package directory)")
-	fs.BoolVar(&preview, "preview", false, "Print generated code to stdout without writing files")
-	fs.StringVar(&tag, "tag", "doppel", "Struct tag key to look for (default: doppel)")
-
-	if err := fs.Parse(args); err != nil {
-		return nil, fmt.Errorf("parse flags: %w", err)
-	}
-
-	cfg := &types.GeneratorConfig{
-		Output:  output,
-		Preview: preview,
-		Tag:     tag,
-		Package: pkg,
-	}
-
-	if typeNames != "" {
-		cfg.TypeNames = splitComma(typeNames)
-		// Validate that type names are valid identifiers.
-		for _, name := range cfg.TypeNames {
-			if !isValidGoIdent(name) {
-				return nil, fmt.Errorf("invalid type name %q: must be a valid Go identifier", name)
+	cmd := &cobra.Command{
+		Use:   "doppelgen",
+		Short: "Generate Clone() method implementations from doppel struct tags",
+		Long: `doppelgen is a code generator that reads Go source files with doppel struct tags
+and emits Clone() method implementations. It analyses struct fields, resolves type
+dependencies, and produces idiomatic Go code with proper deep/shallow/empty/skip semantics.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg := &types.GeneratorConfig{
+				Output:  output,
+				Preview: preview,
+				Tag:     tag,
+				Package: pkg,
 			}
-		}
+
+			if typeNames != "" {
+				cfg.TypeNames = splitComma(typeNames)
+				// Validate that type names are valid identifiers.
+				for _, name := range cfg.TypeNames {
+					if !isValidGoIdent(name) {
+						return fmt.Errorf("invalid type name %q: must be a valid Go identifier", name)
+					}
+				}
+			}
+
+			return run(cfg)
+		},
 	}
 
-	return cfg, nil
+	// Register flags — matching the original flagSet interface.
+	cmd.Flags().StringVar(&typeNames, "type", "", "Comma-separated list of type names to generate (default: all tagged structs)")
+	cmd.Flags().StringVar(&pkg, "package", "", "Target package directory (default: current directory)")
+	cmd.Flags().StringVar(&output, "output", "", "Output directory for generated files (default: package directory)")
+	cmd.Flags().BoolVar(&preview, "preview", false, "Print generated code to stdout without writing files")
+	cmd.Flags().StringVar(&tag, "tag", "doppel", "Struct tag key to look for")
+
+	return cmd
 }
 
 // -------------------------------------------- Internal Helpers --------------------------------------------

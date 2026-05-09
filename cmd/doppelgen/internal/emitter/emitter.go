@@ -6,12 +6,12 @@ package emitter
 import (
 	"bytes"
 	"fmt"
-	"go/format"
 	"sort"
 	"strings"
 
 	"github.com/seyallius/doppel/cmd/doppelgen/internal/types"
 	"github.com/seyallius/doppel/core"
+	"golang.org/x/tools/imports"
 )
 
 // -------------------------------------------- Types --------------------------------------------
@@ -44,12 +44,14 @@ func Generate(structInfo *types.StructInfo) (string, error) {
 	if err := e.emitCloneMethod(structInfo); err != nil {
 		return "", fmt.Errorf("emit Clone() for %s: %w", structInfo.Name, err)
 	}
-	raw := strings.TrimSpace(e.buf.String()) + "\n"
+
 	// Format the generated source using Go's standard formatter.
-	formatted, err := format.Source([]byte(raw))
+	raw := strings.TrimSpace(e.buf.String()) + "\n"
+	formatted, err := imports.Process(structInfo.File, []byte(raw), nil)
 	if err != nil {
 		return raw, fmt.Errorf("format generated code for %s: %w", structInfo.Name, err)
 	}
+
 	return string(formatted), nil
 }
 

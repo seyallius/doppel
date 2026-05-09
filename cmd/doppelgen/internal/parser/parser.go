@@ -590,8 +590,11 @@ func isValidIdent(s string) bool {
 // ResolveDependencies builds a dependency graph from the parsed structs and returns a topologically sorted list.
 // Inner/dependent types appear first to ensure safe generation order. Detects circular dependencies.
 func ResolveDependencies(structs types.TypeInfo) ([]string, error) {
-	// Build adjacency list: typeName -> set of dependency type names.
+	// Build adjacency lists:
+	//   - deps: typeName -> set of dependency type names (what this type depends on).
+	//   - reverse: typeName -> set of types that depend on it (what depends on this type).
 	deps := make(map[string]map[string]bool)
+	reverse := make(map[string]map[string]bool)
 	for name, info := range structs {
 		if info.Skip {
 			continue
@@ -616,9 +619,21 @@ func ResolveDependencies(structs types.TypeInfo) ([]string, error) {
 			}
 		}
 		deps[name] = depSet
+
+		// Build reverse edges: for each dependency, record that 'name' depends on it.
+		for dep := range depSet {
+			if _, ok := structs[dep]; !ok || structs[dep].Skip {
+				continue
+			}
+			if reverse[dep] == nil {
+				reverse[dep] = make(map[string]bool)
+			}
+			reverse[dep][name] = true
+		}
 	}
 
 	// Topological sort using Kahn's algorithm.
+	// inDegree[name] = number of dependencies of name that are in the generation set.
 	inDegree := make(map[string]int)
 	for name := range deps {
 		if _, ok := inDegree[name]; !ok {
@@ -629,10 +644,11 @@ func ResolveDependencies(structs types.TypeInfo) ([]string, error) {
 				// Dependency is not in our generation set — skip.
 				continue
 			}
-			inDegree[dep]++
+			inDegree[name]++
 		}
 	}
 
+	// Start with types that have no dependencies (inDegree == 0).
 	var queue []string
 	for name, degree := range inDegree {
 		if degree == 0 {
@@ -647,13 +663,11 @@ func ResolveDependencies(structs types.TypeInfo) ([]string, error) {
 		queue = queue[1:]
 		sorted = append(sorted, current)
 
-		for dep := range deps[current] {
-			if _, ok := deps[dep]; !ok {
-				continue
-			}
-			inDegree[dep]--
-			if inDegree[dep] == 0 {
-				queue = append(queue, dep)
+		// Decrease inDegree for all types that depend on 'current'.
+		for dependent := range reverse[current] {
+			inDegree[dependent]--
+			if inDegree[dependent] == 0 {
+				queue = append(queue, dependent)
 			}
 		}
 	}

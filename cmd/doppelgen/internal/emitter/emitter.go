@@ -254,7 +254,7 @@ func (e *Emitter) emitCloneTagField(field types.FieldInfo, structName string) er
 	e.emitRaw(fmt.Sprintf("%s, err := %s(x.%s)", field.Name, cloneFn, field.Name))
 	e.emitRaw("if err != nil {")
 	e.indent++
-	e.emitRaw(fmt.Sprintf("return nil, core.WrapError(%q.%s, err)", structName, field.Name))
+	e.emitRaw(fmt.Sprintf("return nil, core.WrapError(%q, err)", structName+"."+field.Name))
 	e.indent--
 	e.emitRaw("}")
 
@@ -273,7 +273,7 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string) error 
 		e.emitRaw(fmt.Sprintf("%s, err := x.%s.Clone()", field.Name, field.Name))
 		e.emitRaw("if err != nil {")
 		e.indent++
-		e.emitRaw(fmt.Sprintf("return nil, core.WrapError(%q.%s, err)", structName, field.Name))
+		e.emitRaw(fmt.Sprintf("return nil, core.WrapError(%q, err)", structName+"."+field.Name))
 		e.indent--
 		e.emitRaw("}")
 
@@ -292,7 +292,7 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string) error 
 		}
 		e.emitRaw("if err != nil {")
 		e.indent++
-		e.emitRaw(fmt.Sprintf("return nil, core.WrapError(%q.%s, err)", structName, field.Name))
+		e.emitRaw(fmt.Sprintf("return nil, core.WrapError(%q, err)", structName+"."+field.Name))
 		e.indent--
 		e.emitRaw("}")
 
@@ -311,7 +311,7 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string) error 
 		}
 		e.emitRaw("if err != nil {")
 		e.indent++
-		e.emitRaw(fmt.Sprintf("return nil, core.WrapError(%q.%s, err)", structName, field.Name))
+		e.emitRaw(fmt.Sprintf("return nil, core.WrapError(%q, err)", structName+"."+field.Name))
 		e.indent--
 		e.emitRaw("}")
 
@@ -320,7 +320,7 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string) error 
 		e.emitRaw(fmt.Sprintf("%s, err := manual.ClonePointer(x.%s, manual.Identity[%s])", field.Name, field.Name, field.PointedToType))
 		e.emitRaw("if err != nil {")
 		e.indent++
-		e.emitRaw(fmt.Sprintf("return nil, core.WrapError(%q.%s, err)", structName, field.Name))
+		e.emitRaw(fmt.Sprintf("return nil, core.WrapError(%q, err)", structName+"."+field.Name))
 		e.indent--
 		e.emitRaw("}")
 
@@ -333,7 +333,7 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string) error 
 		e.emitRaw("})")
 		e.emitRaw("if err != nil {")
 		e.indent++
-		e.emitRaw(fmt.Sprintf("return nil, core.WrapError(%q.%s, err)", structName, field.Name))
+		e.emitRaw(fmt.Sprintf("return nil, core.WrapError(%q, err)", structName+"."+field.Name))
 		e.indent--
 		e.emitRaw("}")
 

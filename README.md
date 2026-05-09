@@ -12,7 +12,7 @@
   <a href="https://github.com/seyallius/doppel/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License"></a>
 </p>
 
-doppel is a Go library for safe, explicit deep cloning of complex data structures. It provides a minimal, zero-reflection API built around composable generic helpers that you wire together inside your type's `Clone()` method.
+doppel is a Go library for safe, explicit deep cloning of complex data structures. It provides a minimal, zero-reflection API built around composable generic helpers that integrate directly into your type's `Clone()` method.
 
 Go assignment is a shallow copy. Structs with pointer fields, slices, and maps silently share memory between "originals" and "copies," leading to subtle bugs. doppel solves this by giving you full control over every field, every allocation, and every edge case.
 
@@ -22,10 +22,10 @@ Go assignment is a shallow copy. Structs with pointer fields, slices, and maps s
 
 | Principle           | What it means                                                             |
 |---------------------|---------------------------------------------------------------------------|
-| **Manual first**    | No reflection, no magic, maximum speed. You write the clone logic.        |
-| **Composable**      | `CloneSlice`, `CloneMap`, `ClonePointer` wire together in your `Clone()`. |
 | **Explicit**        | Every clone path is visible and auditable — no hidden behavior.           |
-| **Code generation** | Struct tags prepare for automatic code generation.                        |
+| **Composable**      | `CloneSlice`, `CloneMap`, `ClonePointer` wire together in your `Clone()`. |
+| **Zero reflection** | No magic, maximum speed. Generics-based helpers with no runtime overhead. |
+| **Code generation** | Optional `doppelgen` tool generates `Clone()` methods from struct tags.   |
 
 ---
 
@@ -41,7 +41,7 @@ doppel        — Top-level API: Clone[T], MustClone[T]
 
 ```
 doppel.Clone(user)  →  user.Clone()  →  manual.CloneSlice + CloneMap + ClonePointer
-                        (zero overhead)      (your code, fully visible)
+                        (zero overhead)      (fully visible, fully controlled)
 ```
 
 There is no priority chain, no registry, and no reflection. You own the clone path.
@@ -100,27 +100,25 @@ original.Tags[0] = "mutated"
 go get github.com/seyallius/doppel
 ```
 
-Requires **Go 1.25** or later. Zero external dependencies.
+Requires **Go 1.25** or later.
 
 ---
 
 ## Features
 
-- **Zero-reflection manual cloning** — generics-based helpers, no runtime overhead
+- **Zero-reflection cloning** — generics-based helpers, no runtime overhead
 - **Composable helpers** — `CloneSlice`, `CloneMap`, `ClonePointer` wire together in `Clone()`
 - **Contextual errors** — field-path annotated errors with `errors.Is`/`errors.As` support
 - **Nil-safety** — all helpers preserve nil/empty distinction
 - **Thread-safe** — all public types are safe for concurrent use
-- **Struct tags** — `doppel:"-"`, `doppel:"shallow"`, `doppel:"clone"`, `doppel:"deep"` for future generator
+- **Struct tags** — `doppel:"-"`, `doppel:"shallow"`, `doppel:"clone"`, `doppel:"deep"` for code generation
 - **Zero dependencies** — only the Go standard library
 
 ---
 
 ## Code Generation with doppelgen
 
-doppelgen reads your Go source files, finds structs annotated with
-`doppel:"..."` tags, and generates `*_clone.gen.go` files that implement
-`SelfClonable[T]`.
+doppelgen reads your Go source files, finds structs annotated with `doppel:"..."` tags, and generates `*_clone.gen.go` files that implement `SelfClonable[T]`.
 
 ### Quick start
 
@@ -133,7 +131,7 @@ doppelgen reads your Go source files, finds structs annotated with
 | Flag     | Description                              |
 |----------|------------------------------------------|
 | -type    | Comma-separated struct names             |
-| -package | Output package name (default: same)      |
+| -package | Target package name (default: same)      |
 | -output  | Output directory                         |
 | -tag     | Custom struct tag name (default: doppel) |
 | -preview | Print generated code to stdout           |
@@ -159,7 +157,7 @@ See [Benchmarks](docs/benchmarks.md) for detailed data.
 | 1 | [Getting Started](./docs/getting-started.md) | Install, first clone, API guide     |
 | 2 | [SelfClonable](./docs/self-clonable.md)      | The `Clone()` method pattern        |
 | 3 | [Manual Helpers](./docs/manual-helpers.md)   | CloneSlice, CloneMap, ClonePointer  |
-| 4 | [Struct Tags](./docs/struct-tags.md)         | Tag directives for future generator |
+| 4 | [Struct Tags](./docs/struct-tags.md)         | Tag directives for code generation  |
 | 5 | [Benchmarks](./docs/benchmarks.md)           | Performance data                    |
 | 6 | [API Reference](./docs/api-reference.md)     | Complete function signatures        |
 

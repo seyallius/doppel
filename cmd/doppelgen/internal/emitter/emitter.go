@@ -14,6 +14,26 @@ import (
 	"golang.org/x/tools/imports"
 )
 
+//TODO(gen-emit): Generated variable names in `Clone` method should be started with
+// lowercase letter or something that isn't same as struct field names as to avoid
+// fieldvsvariable name conflict.
+
+//TODO(gen-emit): The generated manual helpers some times get into error; see generated
+// `nesteduser_clone.gen.go` file;
+//	e.g.,
+//	Address, err := manual.ClonePointer(x.Address, func(v Address) (Address, error) {
+//		return v.Clone()
+//	})
+//	1. Address variable name conflicts with struct name (above to do).
+//	2. Inside the closure, this error is returned: `Cannot use 'v.Clone()' (type (*Address, error)) as the type Address`
+//	// ...
+//	// Field: Items (tag: deep) → manual.CloneSlice with Clone().
+//	Items, err := manual.CloneSlice(x.Items, func(v Address) (Address, error) {
+//		return v.Clone()
+//	})
+//	1. `Address is not a type` due to first to do.
+//	2. If the above variable is renamed to `address` then this error is returned: `Cannot use 'v.Clone()' (type (*Address, error)) as the type Address`
+
 // -------------------------------------------- Types --------------------------------------------
 
 // Emitter holds state for a single code generation run, managing buffered output, imports, and indentation.

@@ -95,6 +95,7 @@ original.Tags[0] = "mutated"
 ### Code Generation with doppelgen
 
 `doppelgen` reads your Go source files, finds structs annotated with `doppel:"..."` tags, and generates `*_clone.gen.go` files that implement `SelfClonable[T]`.
+It also generates companion `*_clone_gen_test.go` test files that verify nil safety, deep-copy independence, skip/shallow/empty field semantics, and more.
 
 ### Quick start
 

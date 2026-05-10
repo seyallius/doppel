@@ -3,9 +3,9 @@
 //
 // Usage:
 //
-//	doppelgen -type=User,Order -package=mypackage -output=./generated
-//	doppelgen -type=User -preview
-//	doppelgen -package=. -output=./
+//	doppelgen --type=User,Order --package=mypackage --output=./generated
+//	doppelgen --type=User --preview
+//	doppelgen --package=. --output=./
 package main
 
 import (
@@ -118,9 +118,21 @@ func run(cfg *types.GeneratorConfig) error {
 			}
 
 			_, _ = fmt.Fprintf(os.Stdout, "  ✓ %s\n", fileName)
+
+			// Generate companion test file.
+			testCode, testErr := emitter.GenerateTest(info)
+			if testErr != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "  ⚠ generate test for %s: %v\n", typeName, testErr)
+			} else {
+				testFileName := filepath.Join(outputDir, fmt.Sprintf("%s_clone_gen_test.go", strings.ToLower(typeName)))
+				if testErr = os.WriteFile(testFileName, []byte(testCode), 0644); testErr != nil {
+					return fmt.Errorf("write %s: %w", testFileName, testErr)
+				}
+				_, _ = fmt.Fprintf(os.Stdout, "  ✓ %s\n", testFileName)
+			}
 		}
 
-		_, _ = fmt.Fprintf(os.Stdout, "\nGenerated %d Clone() implementation(s) in %s\n", len(sorted), outputDir)
+		_, _ = fmt.Fprintf(os.Stdout, "\nGenerated %d Clone() implementation(s) + test file(s) in %s\n", len(sorted), outputDir)
 	}
 
 	return nil

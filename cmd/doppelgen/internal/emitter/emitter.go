@@ -14,26 +14,6 @@ import (
 	"golang.org/x/tools/imports"
 )
 
-//TODO(gen-emit): Generated variable names in `Clone` method should be started with
-// lowercase letter or something that isn't same as struct field names as to avoid
-// fieldvsvariable name conflict.
-
-//TODO(gen-emit): The generated manual helpers some times get into error; see generated
-// `nesteduser_clone.gen.go` file;
-//	e.g.,
-//	Address, err := manual.ClonePointer(x.Address, func(v Address) (Address, error) {
-//		return v.Clone()
-//	})
-//	1. Address variable name conflicts with struct name (above to do).
-//	2. Inside the closure, this error is returned: `Cannot use 'v.Clone()' (type (*Address, error)) as the type Address`
-//	// ...
-//	// Field: Items (tag: deep) → manual.CloneSlice with Clone().
-//	Items, err := manual.CloneSlice(x.Items, func(v Address) (Address, error) {
-//		return v.Clone()
-//	})
-//	1. `Address is not a type` due to first to do.
-//	2. If the above variable is renamed to `address` then this error is returned: `Cannot use 'v.Clone()' (type (*Address, error)) as the type Address`
-
 // -------------------------------------------- Types --------------------------------------------
 
 // Emitter holds state for a single code generation run, managing buffered output, imports, and indentation.
@@ -183,13 +163,14 @@ func (e *Emitter) emitCloneMethod(info *types.StructInfo) error {
 	e.emitBlankLine()
 
 	// Per-field clone logic.
-	var fieldNames []string
+	// fieldVars maps field name → generated variable name (lowercased to avoid conflicts).
+	fieldVars := make(map[string]string, len(info.Fields))
 	for _, field := range info.Fields {
 		if !field.Directive.Skip {
-			fieldNames = append(fieldNames, field.Name)
+			fieldVars[field.Name] = cloneVarName(field.Name)
 		}
 
-		if err := e.emitFieldClone(field, info.Name); err != nil {
+		if err := e.emitFieldClone(field, info.Name, fieldVars); err != nil {
 			return fmt.Errorf("field %s: %w", field.Name, err)
 		}
 	}
@@ -200,8 +181,12 @@ func (e *Emitter) emitCloneMethod(info *types.StructInfo) error {
 	e.emitRaw(fmt.Sprintf("return &%s{", info.Name))
 	e.indent++
 
-	for _, name := range fieldNames {
-		e.emitRaw(fmt.Sprintf("%s: %s,", name, name))
+	for _, field := range info.Fields {
+		if field.Directive.Skip {
+			continue
+		}
+		varName := fieldVars[field.Name]
+		e.emitRaw(fmt.Sprintf("%s: %s,", field.Name, varName))
 	}
 
 	e.indent--
@@ -216,8 +201,9 @@ func (e *Emitter) emitCloneMethod(info *types.StructInfo) error {
 // -------------------------------------------- Field Clone Logic --------------------------------------------
 
 // emitFieldClone dispatches to the appropriate cloning strategy based on the field's doppel tag and type category.
-func (e *Emitter) emitFieldClone(field types.FieldInfo, structName string) error {
-	// Determine clone strategy based on tag and type.
+func (e *Emitter) emitFieldClone(field types.FieldInfo, structName string, fieldVars map[string]string) error {
+	varName := fieldVars[field.Name]
+
 	switch {
 	case field.Directive.Skip:
 		// Omit field — it receives its zero value.
@@ -226,56 +212,56 @@ func (e *Emitter) emitFieldClone(field types.FieldInfo, structName string) error
 
 	case field.Directive.Shallow:
 		e.emitLine(fmt.Sprintf("// Field: %s (tag: shallow) — direct assignment, shares backing data.", field.Name))
-		e.emitRaw(fmt.Sprintf("%s := x.%s", field.Name, field.Name))
+		e.emitRaw(fmt.Sprintf("%s := x.%s", varName, field.Name))
 		return nil
 
 	case field.Directive.Empty:
-		return e.emitEmptyField(field, structName)
+		return e.emitEmptyField(field, structName, varName)
 
 	case field.Directive.Clone:
-		return e.emitCloneTagField(field, structName)
+		return e.emitCloneTagField(field, structName, varName)
 
 	default:
 		// Deep (default).
-		return e.emitDeepField(field, structName)
+		return e.emitDeepField(field, structName, varName)
 	}
 }
 
 // emitEmptyField generates code that initializes an empty but non-nil container for slices, maps, or structs.
-func (e *Emitter) emitEmptyField(field types.FieldInfo, structName string) error {
+func (e *Emitter) emitEmptyField(field types.FieldInfo, structName string, varName string) error {
 	e.emitLine(fmt.Sprintf("// Field: %s (tag: empty) — empty-but-non-nil value.", field.Name))
 
 	if isPrimitiveCategory(field.TypeCategory) {
 		// Primitives ignore TagEmpty — assignment is already non-nil.
-		e.emitRaw(fmt.Sprintf("%s := x.%s", field.Name, field.Name))
+		e.emitRaw(fmt.Sprintf("%s := x.%s", varName, field.Name))
 		return nil
 	}
 
 	switch field.TypeCategory {
 	case types.CatSlice:
-		e.emitRaw(fmt.Sprintf("%s := %s{}", field.Name, field.Type))
+		e.emitRaw(fmt.Sprintf("%s := %s{}", varName, field.Type))
 	case types.CatMap:
-		e.emitRaw(fmt.Sprintf("%s := %s{}", field.Name, field.Type))
+		e.emitRaw(fmt.Sprintf("%s := %s{}", varName, field.Type))
 	case types.CatPtrStruct:
-		e.emitRaw(fmt.Sprintf("%s := &%s{}", field.Name, field.PointedToType))
+		e.emitRaw(fmt.Sprintf("%s := &%s{}", varName, field.PointedToType))
 	case types.CatPtrPrimitive:
 		// *int{} doesn't make sense, but we emit it for consistency.
-		e.emitRaw(fmt.Sprintf("%s := &%s{}", field.Name, field.PointedToType))
+		e.emitRaw(fmt.Sprintf("%s := &%s{}", varName, field.PointedToType))
 	case types.CatStruct:
-		e.emitRaw(fmt.Sprintf("%s := %s{}", field.Name, field.Type))
+		e.emitRaw(fmt.Sprintf("%s := %s{}", varName, field.Type))
 	default:
-		e.emitRaw(fmt.Sprintf("%s := x.%s", field.Name, field.Name))
+		e.emitRaw(fmt.Sprintf("%s := x.%s", varName, field.Name))
 	}
 
 	return nil
 }
 
 // emitCloneTagField generates a call to a convention-based clone function (e.g., CloneUserProfile).
-func (e *Emitter) emitCloneTagField(field types.FieldInfo, structName string) error {
+func (e *Emitter) emitCloneTagField(field types.FieldInfo, structName string, varName string) error {
 	e.emitLine(fmt.Sprintf("// Field: %s (tag: clone) — convention-based clone function.", field.Name))
 
 	cloneFn := fmt.Sprintf("Clone%s%s", structName, field.Name)
-	e.emitRaw(fmt.Sprintf("%s, err := %s(x.%s)", field.Name, cloneFn, field.Name))
+	e.emitRaw(fmt.Sprintf("%s, err := %s(x.%s)", varName, cloneFn, field.Name))
 	e.emitRaw("if err != nil {")
 	e.indent++
 	e.emitRaw(fmt.Sprintf("return nil, core.WrapError(%q, err)", structName+"."+field.Name))
@@ -286,18 +272,27 @@ func (e *Emitter) emitCloneTagField(field types.FieldInfo, structName string) er
 }
 
 // emitDeepField generates deep cloning logic for primitives, slices, maps, pointers, and nested structs.
-func (e *Emitter) emitDeepField(field types.FieldInfo, structName string) error {
+func (e *Emitter) emitDeepField(field types.FieldInfo, structName string, varName string) error {
 	switch field.TypeCategory {
 	case types.CatPrimitive:
 		e.emitLine(fmt.Sprintf("// Field: %s (primitive: %s) — direct assignment.", field.Name, field.Type))
-		e.emitRaw(fmt.Sprintf("%s := x.%s", field.Name, field.Name))
+		e.emitRaw(fmt.Sprintf("%s := x.%s", varName, field.Name))
 
 	case types.CatStruct:
-		e.emitLine(fmt.Sprintf("// Field: %s (struct: %s) — recursive Clone().", field.Name, field.Type))
-		e.emitRaw(fmt.Sprintf("%s, err := x.%s.Clone()", field.Name, field.Name))
+		// Value struct — call Clone() and dereference the returned pointer.
+		// Clone() returns (*T, error); we need the T value, so we dereference with *.
+		e.emitLine(fmt.Sprintf("// Field: %s (struct: %s) — recursive Clone(), dereference result.", field.Name, field.Type))
+		e.emitRaw(fmt.Sprintf("%sPtr, err := x.%s.Clone()", varName, field.Name))
 		e.emitRaw("if err != nil {")
 		e.indent++
 		e.emitRaw(fmt.Sprintf("return nil, core.WrapError(%q, err)", structName+"."+field.Name))
+		e.indent--
+		e.emitRaw("}")
+		// Guard against a nil return (shouldn't happen for value receivers, but be safe).
+		e.emitRaw(fmt.Sprintf("var %s %s", varName, field.Type))
+		e.emitRaw(fmt.Sprintf("if %sPtr != nil {", varName))
+		e.indent++
+		e.emitRaw(fmt.Sprintf("%s = *%sPtr", varName, varName))
 		e.indent--
 		e.emitRaw("}")
 
@@ -305,12 +300,25 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string) error 
 		elemType := field.ElemType
 		if isBuiltinPrimitive(elemType) {
 			e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) → manual.CloneSlice with Identity[%s].", field.Name, elemType))
-			e.emitRaw(fmt.Sprintf("%s, err := manual.CloneSlice(x.%s, manual.Identity[%s])", field.Name, field.Name, elemType))
+			e.emitRaw(fmt.Sprintf("%s, err := manual.CloneSlice(x.%s, manual.Identity[%s])", varName, field.Name, elemType))
 		} else {
-			e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) → manual.CloneSlice with Clone().", field.Name))
-			e.emitRaw(fmt.Sprintf("%s, err := manual.CloneSlice(x.%s, func(v %s) (%s, error) {", field.Name, field.Name, elemType, elemType))
+			// Struct element: Clone() returns (*T, error); the closure must return (T, error).
+			// Dereference the pointer inside the closure, guarding against nil.
+			e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) → manual.CloneSlice with Clone(), dereference pointer result.", field.Name))
+			e.emitRaw(fmt.Sprintf("%s, err := manual.CloneSlice(x.%s, func(v %s) (%s, error) {", varName, field.Name, elemType, elemType))
 			e.indent++
-			e.emitRaw("return v.Clone()")
+			e.emitRaw("cloned, cloneErr := v.Clone()")
+			e.emitRaw("if cloneErr != nil {")
+			e.indent++
+			e.emitRaw(fmt.Sprintf("return %s{}, cloneErr", elemType))
+			e.indent--
+			e.emitRaw("}")
+			e.emitRaw("if cloned == nil {")
+			e.indent++
+			e.emitRaw(fmt.Sprintf("return %s{}, nil", elemType))
+			e.indent--
+			e.emitRaw("}")
+			e.emitRaw("return *cloned, nil")
 			e.indent--
 			e.emitRaw("})")
 		}
@@ -324,12 +332,24 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string) error 
 		valType := field.ValueType
 		if isBuiltinPrimitive(valType) {
 			e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) → manual.CloneMap with Identity[%s].", field.Name, valType))
-			e.emitRaw(fmt.Sprintf("%s, err := manual.CloneMap(x.%s, manual.Identity[%s])", field.Name, field.Name, valType))
+			e.emitRaw(fmt.Sprintf("%s, err := manual.CloneMap(x.%s, manual.Identity[%s])", varName, field.Name, valType))
 		} else {
-			e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) → manual.CloneMap with Clone().", field.Name))
-			e.emitRaw(fmt.Sprintf("%s, err := manual.CloneMap(x.%s, func(v %s) (%s, error) {", field.Name, field.Name, valType, valType))
+			// Struct value: same dereference fix as slice.
+			e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) → manual.CloneMap with Clone(), dereference pointer result.", field.Name))
+			e.emitRaw(fmt.Sprintf("%s, err := manual.CloneMap(x.%s, func(v %s) (%s, error) {", varName, field.Name, valType, valType))
 			e.indent++
-			e.emitRaw("return v.Clone()")
+			e.emitRaw("cloned, cloneErr := v.Clone()")
+			e.emitRaw("if cloneErr != nil {")
+			e.indent++
+			e.emitRaw(fmt.Sprintf("return %s{}, cloneErr", valType))
+			e.indent--
+			e.emitRaw("}")
+			e.emitRaw("if cloned == nil {")
+			e.indent++
+			e.emitRaw(fmt.Sprintf("return %s{}, nil", valType))
+			e.indent--
+			e.emitRaw("}")
+			e.emitRaw("return *cloned, nil")
 			e.indent--
 			e.emitRaw("})")
 		}
@@ -341,7 +361,7 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string) error 
 
 	case types.CatPtrPrimitive:
 		e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) → manual.ClonePointer with Identity[%s].", field.Name, field.PointedToType))
-		e.emitRaw(fmt.Sprintf("%s, err := manual.ClonePointer(x.%s, manual.Identity[%s])", field.Name, field.Name, field.PointedToType))
+		e.emitRaw(fmt.Sprintf("%s, err := manual.ClonePointer(x.%s, manual.Identity[%s])", varName, field.Name, field.PointedToType))
 		e.emitRaw("if err != nil {")
 		e.indent++
 		e.emitRaw(fmt.Sprintf("return nil, core.WrapError(%q, err)", structName+"."+field.Name))
@@ -349,10 +369,23 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string) error 
 		e.emitRaw("}")
 
 	case types.CatPtrStruct:
-		e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) → manual.ClonePointer with Clone().", field.Name))
-		e.emitRaw(fmt.Sprintf("%s, err := manual.ClonePointer(x.%s, func(v %s) (%s, error) {", field.Name, field.Name, field.PointedToType, field.PointedToType))
+		// ClonePointer[T] expects func(v T) (T, error), i.e. func(v Address) (Address, error).
+		// But Clone() returns (*Address, error). We must dereference inside the closure.
+		e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) → manual.ClonePointer with Clone(), dereference pointer result.", field.Name))
+		e.emitRaw(fmt.Sprintf("%s, err := manual.ClonePointer(x.%s, func(v %s) (%s, error) {", varName, field.Name, field.PointedToType, field.PointedToType))
 		e.indent++
-		e.emitRaw("return v.Clone()")
+		e.emitRaw("cloned, cloneErr := v.Clone()")
+		e.emitRaw("if cloneErr != nil {")
+		e.indent++
+		e.emitRaw(fmt.Sprintf("return %s{}, cloneErr", field.PointedToType))
+		e.indent--
+		e.emitRaw("}")
+		e.emitRaw("if cloned == nil {")
+		e.indent++
+		e.emitRaw(fmt.Sprintf("return %s{}, nil", field.PointedToType))
+		e.indent--
+		e.emitRaw("}")
+		e.emitRaw("return *cloned, nil")
 		e.indent--
 		e.emitRaw("})")
 		e.emitRaw("if err != nil {")
@@ -363,20 +396,30 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string) error 
 
 	case types.CatInterface:
 		e.emitLine(fmt.Sprintf("// Field: %s (interface) — direct assignment (no deep copy possible).", field.Name))
-		e.emitRaw(fmt.Sprintf("%s := x.%s", field.Name, field.Name))
+		e.emitRaw(fmt.Sprintf("%s := x.%s", varName, field.Name))
 
 	case types.CatUnknown:
 		e.emitLine(fmt.Sprintf("// Field: %s (unknown type: %s) — direct assignment.", field.Name, field.Type))
-		e.emitRaw(fmt.Sprintf("%s := x.%s", field.Name, field.Name))
+		e.emitRaw(fmt.Sprintf("%s := x.%s", varName, field.Name))
 
 	default:
-		e.emitRaw(fmt.Sprintf("%s := x.%s", field.Name, field.Name))
+		e.emitRaw(fmt.Sprintf("%s := x.%s", varName, field.Name))
 	}
 
 	return nil
 }
 
 // -------------------------------------------- Helpers --------------------------------------------
+
+// cloneVarName converts a PascalCase field name to a camelCase local variable name,
+// preventing conflicts between the generated variable and the field's type name.
+// For example: "Address" → "clonedAddress", "ID" → "clonedID", "Tags" → "clonedTags".
+func cloneVarName(fieldName string) string {
+	if fieldName == "" {
+		return "cloned"
+	}
+	return "cloned" + strings.ToUpper(fieldName[:1]) + fieldName[1:]
+}
 
 // emitRaw writes a raw string to the buffer with the current indentation level applied.
 func (e *Emitter) emitRaw(s string) {

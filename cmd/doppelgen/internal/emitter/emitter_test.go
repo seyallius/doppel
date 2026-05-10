@@ -40,16 +40,24 @@ func TestGenerate_BasicUser(t *testing.T) {
 	}{
 		{"package declaration", "package testdata"},
 		{"nil guard", "if x == nil"},
-		{"ID primitive", "ID := x.ID"},
-		{"Name primitive", "Name := x.Name"},
+		// Variable names are now prefixed with "cloned" to avoid field/type name conflicts.
+		{"ID primitive", "clonedID := x.ID"},
+		{"Name primitive", "clonedName := x.Name"},
 		{"Tags clone slice", "manual.CloneSlice(x.Tags, manual.Identity[string])"},
 		{"Scores clone map", "manual.CloneMap(x.Scores, manual.Identity[int])"},
-		{"Config shallow", "Config := x.Config"},
-		{"Cache empty", "Cache := []string{}"},
+		{"Config shallow", "clonedConfig := x.Config"},
+		{"Cache empty", "clonedCache := []string{}"},
 		{"Secret skip", "// Field: Secret (tag: skip)"},
 		{"WrapError Tags", `WrapError("BasicUser.Tags", err)`},
 		{"WrapError Scores", `WrapError("BasicUser.Scores", err)`},
 		{"return struct", "return &BasicUser{"},
+		// Return statement must map field names → cloned variable names.
+		{"return ID", "ID: clonedID,"},
+		{"return Name", "Name: clonedName,"},
+		{"return Tags", "Tags: clonedTags,"},
+		{"return Scores", "Scores: clonedScores,"},
+		{"return Config", "Config: clonedConfig,"},
+		{"return Cache", "Cache: clonedCache,"},
 		{"import manual", "doppel/manual"},
 		{"import core", "doppel/core"},
 	}
@@ -63,7 +71,7 @@ func TestGenerate_BasicUser(t *testing.T) {
 	}
 
 	// Verify Secret is NOT assigned (skip tag).
-	if containsStr(code, "Secret := x.Secret") {
+	if containsStr(code, "Secret := x.Secret") || containsStr(code, "clonedSecret := x.Secret") {
 		t.Error("Secret should be skipped (not assigned)")
 	}
 }
@@ -88,14 +96,20 @@ func TestGenerate_Address(t *testing.T) {
 		t.Fatalf("Generate failed: %v", err)
 	}
 
-	// All primitives, no manual/core imports needed.
-	if !containsStr(code, "Street := x.Street") {
-		t.Error("missing Street assignment")
+	// All primitives use cloned-prefixed variables.
+	if !containsStr(code, "clonedStreet := x.Street") {
+		t.Error("missing clonedStreet assignment")
 	}
-	if !containsStr(code, "City := x.City") {
-		t.Error("missing City assignment")
+	if !containsStr(code, "clonedCity := x.City") {
+		t.Error("missing clonedCity assignment")
 	}
-	// For all-primitive structs, there may be no imports at all.
+	// Return must use cloned vars.
+	if !containsStr(code, "Street: clonedStreet,") {
+		t.Error("return missing Street: clonedStreet")
+	}
+	if !containsStr(code, "City: clonedCity,") {
+		t.Error("return missing City: clonedCity")
+	}
 }
 
 func TestGenerate_NestedUser(t *testing.T) {
@@ -123,13 +137,21 @@ func TestGenerate_NestedUser(t *testing.T) {
 		name     string
 		contains string
 	}{
-		{"pointer deep", "manual.ClonePointer(x.Address, func(v Address)"},
-		{"pointer Clone call", "return v.Clone()"},
-		{"slice struct Clone", "manual.CloneSlice(x.Items, func(v Address)"},
+		// CatPtrStruct: ClonePointer with a closure that dereferences the *Address return.
+		{"pointer deep ClonePointer", "manual.ClonePointer(x.Address, func(v Address) (Address, error)"},
+		{"pointer closure dereference", "return *cloned, nil"},
+		{"pointer nil guard in closure", "if cloned == nil {"},
+		// CatSlice[Address]: same closure pattern.
+		{"slice struct CloneSlice", "manual.CloneSlice(x.Items, func(v Address) (Address, error)"},
+		// CatMap[string]string: primitive value, uses Identity.
 		{"map string identity", "manual.CloneMap(x.Labels, manual.Identity[string])"},
 		{"WrapError Address", `WrapError("NestedUser.Address", err)`},
 		{"WrapError Items", `WrapError("NestedUser.Items", err)`},
 		{"WrapError Labels", `WrapError("NestedUser.Labels", err)`},
+		// Return uses cloned-prefixed variables — no field/type name collision.
+		{"return Address", "Address: clonedAddress,"},
+		{"return Items", "Items: clonedItems,"},
+		{"return Labels", "Labels: clonedLabels,"},
 	}
 
 	for _, tc := range checks {
@@ -138,6 +160,11 @@ func TestGenerate_NestedUser(t *testing.T) {
 				t.Errorf("generated code missing %q\nFull output:\n%s", tc.contains, code)
 			}
 		})
+	}
+
+	// Verify there is no bare "Address :=" (the old name-collision pattern).
+	if containsStr(code, "\nAddress, err :=") || containsStr(code, "\tAddress, err :=") {
+		t.Error("variable named 'Address' conflicts with struct type; should use 'clonedAddress'")
 	}
 }
 
@@ -161,20 +188,20 @@ func TestGenerate_EmptyFields(t *testing.T) {
 		t.Fatalf("Generate failed: %v", err)
 	}
 
-	// Primitive with empty tag should still be assignment (not empty literal).
-	if !containsStr(code, "Name := x.Name") {
-		t.Error("primitive Name with empty tag should be assignment")
+	// Primitive with empty tag should still be assignment.
+	if !containsStr(code, "clonedName := x.Name") {
+		t.Error("primitive Name with empty tag should be direct assignment to clonedName")
 	}
 
-	// Non-primitives should get empty-but-non-nil.
-	if !containsStr(code, "Tags := []string{}") {
-		t.Error("Tags should be empty slice literal")
+	// Non-primitives should get empty-but-non-nil using cloned-prefixed vars.
+	if !containsStr(code, "clonedTags := []string{}") {
+		t.Error("Tags should be empty slice literal assigned to clonedTags")
 	}
-	if !containsStr(code, "Scores := map[int]string{}") {
-		t.Error("Scores should be empty map literal")
+	if !containsStr(code, "clonedScores := map[int]string{}") {
+		t.Error("Scores should be empty map literal assigned to clonedScores")
 	}
-	if !containsStr(code, "Addr := &Address{}") {
-		t.Error("Addr should be empty pointer literal")
+	if !containsStr(code, "clonedAddr := &Address{}") {
+		t.Error("Addr should be empty pointer literal assigned to clonedAddr")
 	}
 }
 
@@ -200,27 +227,32 @@ func TestGenerate_PointerPrimitives(t *testing.T) {
 		t.Fatalf("Generate failed: %v", err)
 	}
 
-	// Deep pointer primitives should use ClonePointer + Identity.
+	// Deep pointer primitives should use ClonePointer + Identity with cloned-prefixed vars.
 	if !containsStr(code, "manual.ClonePointer(x.Name, manual.Identity[string])") {
-		t.Error("missing Name ClonePointer with Identity[string]")
+		t.Error("missing clonedName ClonePointer with Identity[string]")
 	}
 	if !containsStr(code, "manual.ClonePointer(x.Age, manual.Identity[int])") {
-		t.Error("missing Age ClonePointer with Identity[int]")
+		t.Error("missing clonedAge ClonePointer with Identity[int]")
 	}
 
-	// Skip should omit Secret.
-	if containsStr(code, "Secret := x.Secret") {
-		t.Error("Secret should be skipped")
+	// Skip should omit Secret entirely.
+	if containsStr(code, "clonedSecret") {
+		t.Error("Secret should be skipped (not assigned)")
 	}
 
 	// Shallow should be direct assignment.
-	if !containsStr(code, "Shallow := x.Shallow") {
-		t.Error("missing Shallow direct assignment")
+	if !containsStr(code, "clonedShallow := x.Shallow") {
+		t.Error("missing clonedShallow direct assignment")
 	}
 
 	// Empty pointer-to-primitive is treated as primitive category — direct assignment.
-	if !containsStr(code, "EmptyP := x.EmptyP") {
-		t.Error("missing EmptyP direct assignment (pointer-to-primitive with empty tag)")
+	if !containsStr(code, "clonedEmptyP := x.EmptyP") {
+		t.Error("missing clonedEmptyP direct assignment (pointer-to-primitive with empty tag)")
+	}
+
+	// Return should map correctly.
+	if !containsStr(code, "Name: clonedName,") {
+		t.Error("return missing Name: clonedName")
 	}
 }
 
@@ -242,12 +274,15 @@ func TestGenerate_CloneTag(t *testing.T) {
 		t.Fatalf("Generate failed: %v", err)
 	}
 
-	// Should call convention-based clone function.
+	// Convention-based clone function call with cloned-prefixed variable.
 	if !containsStr(code, "CloneCloneTagUserProfile(x.Profile)") {
 		t.Error("missing convention-based clone function call")
 	}
 	if !containsStr(code, `WrapError("CloneTagUser.Profile", err)`) {
 		t.Error("missing WrapError for Profile")
+	}
+	if !containsStr(code, "Profile: clonedProfile,") {
+		t.Error("return missing Profile: clonedProfile")
 	}
 }
 

@@ -12,10 +12,10 @@ default:
 treeclip dir="":
     treeclip run {{ dir }} -f -t -c -v --stats
 
-# Compile the Go application into an executable binary at ./bin/doppel
+# Compile the Go generator application into an executable binary at ./bin/doppelgen
 [group('Development')]
-build:
-    go build -o ./bin/doppel ./...
+build-doppelgen:
+    go build -o bin/doppelgen ./cmd/doppelgen
 
 # Run all Go tests with verbose output to show each test's progress and results
 [group('Development')]
@@ -27,11 +27,6 @@ test:
 test-coverage:
     go test -coverprofile=coverage.out ./...
     go tool cover -html=coverage.out
-
-# Build doppelgen binary file
-[group('Development')]
-build-doppelgen:
-    go build -o bin/ ./cmd/doppelgen/
 
 # ----------------------------------------------------------------
 # Benchmark

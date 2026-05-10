@@ -21,6 +21,8 @@ import (
 
 // -------------------------------------------- Main --------------------------------------------
 
+//go:generate go run github.com/seyallius/doppel/cmd/doppelgen --package=testdata --preview
+
 // main is the entry point for the doppelgen CLI. It creates the cobra root command
 // and executes it, handling top-level error printing and exit codes.
 func main() {

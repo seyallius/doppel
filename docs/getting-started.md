@@ -114,13 +114,13 @@ go install github.com/seyallius/doppel/cmd/doppelgen@latest
 
 ```bash
 # Generate Clone() for specific types
-doppelgen -type=User,Order -package=./models
+doppelgen --type=User,Order --package=./models
 
 # Generate for all tagged structs in a package
-doppelgen -package=./models -output=./generated
+doppelgen --package=./models --output=./generated
 
 # Preview generated code without writing files
-doppelgen -type=User -preview
+doppelgen --type=User --preview
 ```
 
 ### go:generate integration
@@ -128,7 +128,7 @@ doppelgen -type=User -preview
 Add a directive to any Go file in your package:
 
 ```go
-//go:generate go run github.com/seyallius/doppel/cmd/doppelgen -type=User
+//go:generate go run github.com/seyallius/doppel/cmd/doppelgen --type=User
 ```
 
 Then run:

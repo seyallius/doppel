@@ -114,7 +114,7 @@ type Cache struct {
 ## Using tags with `doppelgen`
 
 When you run the code generator, it reads the struct tags and emits the
-appropriate `Clone()` method. See [Getting Started](getting-started.md) for
+appropriate `Clone()` method. See [Getting Started#Code Generator](getting-started.md#code-generator-doppelgen)
 how to run `doppelgen`.
 
 

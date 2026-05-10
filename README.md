@@ -101,7 +101,7 @@ original.Tags[0] = "mutated"
 Add the following directive to any `go` file (typically in any main like file).
 
 ```go
-//go:generate go run github.com/seyallius/doppel/cmd/doppelgen -type=MyStruct
+//go:generate go run github.com/seyallius/doppel/cmd/doppelgen --type=MyStruct
 ```
 
 Then run:

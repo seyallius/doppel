@@ -1,7 +1,7 @@
 // Package emitter. testgen.go - Generates Go test files for Clone() method implementations
 // produced by doppelgen. Each generated test file exercises the clone method with nil guards,
-// round-trip checks, deep-copy independence, skip-field zero-value verification, shallow-field
-// reference sharing, and empty-field non-nil assertions.
+// reflect-based deep equality checks, mutation independence verification per field directive,
+// skip-field zero-value assertions, shallow-field reference sharing, and empty-field non-nil checks.
 package emitter
 
 import (
@@ -15,8 +15,6 @@ import (
 	"golang.org/x/tools/imports"
 )
 
-//TODO(gen-test): Use reflection with deep checking.
-
 // -------------------------------------------- Types --------------------------------------------
 
 // testEmitter holds state for a single test-file generation run.
@@ -29,9 +27,15 @@ type testEmitter struct {
 // -------------------------------------------- Public API --------------------------------------------
 
 // GenerateTest produces the complete Go test file content for a generated Clone() method.
-// It creates focused sub-tests that verify nil safety, basic round-trip, deep-copy
-// independence, skip-field zero values, shallow-field reference sharing, and empty-field
-// non-nil semantics. Returns an error if formatting fails.
+// It creates focused sub-tests that verify:
+//   - nil safety
+//   - reflect.DeepEqual round-trip (clone has same values as original)
+//   - mutation independence (mutating clone does not affect original, and vice versa)
+//   - skip-field zero values
+//   - shallow-field reference sharing
+//   - empty-field non-nil semantics
+//
+// Returns an error if formatting fails.
 func GenerateTest(structInfo *types.StructInfo) (string, error) {
 	e := &testEmitter{
 		buf:     bytes.Buffer{},
@@ -57,23 +61,34 @@ func GenerateTest(structInfo *types.StructInfo) (string, error) {
 	if e.hasCloneTagFields(structInfo) {
 		e.emitCloneTagStubTest(structInfo)
 	} else {
+		// 1. Nil safety.
 		e.emitNilTest(structInfo)
 		e.emitBlankLine()
-		e.emitRoundTripTest(structInfo)
 
-		// Only emit specialized sub-tests when the struct has relevant fields.
+		// 2. reflect.DeepEqual round-trip — clone must have identical values to original.
+		e.emitDeepEqualTest(structInfo)
+
+		// 3. Mutation independence — mutate clone fields and verify original is unaffected,
+		//    then mutate original fields and verify clone is unaffected.
+		//    Only emitted when the struct has deep-copied container fields.
 		if e.hasDeepContainerFields(structInfo) {
 			e.emitBlankLine()
-			e.emitDeepCopyTest(structInfo)
+			e.emitMutationIndependenceTest(structInfo)
 		}
+
+		// 4. Skip-field zero values.
 		if e.hasSkipFields(structInfo) {
 			e.emitBlankLine()
 			e.emitSkipTest(structInfo)
 		}
+
+		// 5. Shallow-field reference sharing.
 		if e.hasShallowContainerFields(structInfo) {
 			e.emitBlankLine()
 			e.emitShallowTest(structInfo)
 		}
+
+		// 6. Empty-field non-nil assertions.
 		if e.hasEmptyFields(structInfo) {
 			e.emitBlankLine()
 			e.emitEmptyTest(structInfo)
@@ -106,14 +121,10 @@ func (e *testEmitter) emitPackage(name string) {
 // -------------------------------------------- Imports --------------------------------------------
 
 func (e *testEmitter) emitImports(info *types.StructInfo) {
-	// Test files always need "testing".
+	// Test files always need "testing" and "reflect" for DeepEqual checks.
 	e.imports["testing"] = types.ImportSpec{Path: "testing"}
+	e.imports["reflect"] = types.ImportSpec{Path: "reflect"}
 
-	// We need the package under test — use its package path relative to the module.
-	// Since the test file lives in the same directory, same package import is fine
-	// for external test packages (package_test). However, to keep things simple and
-	// to avoid needing the full import path, we use same-package tests (package testdata)
-	// by default. The imports.Process call will clean up any unused imports.
 	_ = info
 
 	if len(e.imports) == 0 {
@@ -169,69 +180,25 @@ func (e *testEmitter) emitNilTest(info *types.StructInfo) {
 	e.emitRaw("}")
 }
 
-// -------------------------------------------- Round-Trip Test --------------------------------------------
+// -------------------------------------------- reflect.DeepEqual Round-Trip Test --------------------------------------------
 
-func (e *testEmitter) emitRoundTripTest(info *types.StructInfo) {
-	e.emitRaw(fmt.Sprintf("func Test%s_Clone(t *testing.T) {", utils.ToUpperAtN(0, info.Name)))
+// emitDeepEqualTest emits a test that:
+//  1. Constructs an original with non-zero values.
+//  2. Clones it.
+//  3. Checks clone != nil and clone != original (pointer inequality).
+//  4. Uses reflect.DeepEqual to verify every non-skip field has the same value.
+//  5. Verifies skip fields are zero-valued in the clone.
+func (e *testEmitter) emitDeepEqualTest(info *types.StructInfo) {
+	e.emitRaw(fmt.Sprintf("func Test%s_Clone_DeepEqual(t *testing.T) {", utils.ToUpperAtN(0, info.Name)))
 	e.indent++
 	e.emitRaw("t.Parallel()")
 	e.emitBlankLine()
 
-	// Construct original with non-zero test values.
+	// Construct original with non-zero values for all fields.
+	e.emitComment("Construct original with non-zero test values.")
 	e.emitRaw(fmt.Sprintf("original := &%s{", info.Name))
 	e.indent++
 	for _, field := range info.Fields {
-		if field.Directive.Skip {
-			// Initialize skip fields too so we can verify they're zeroed.
-			e.emitRaw(fmt.Sprintf("%s: %s,", field.Name, testFieldValue(field)))
-		} else {
-			e.emitRaw(fmt.Sprintf("%s: %s,", field.Name, testFieldValue(field)))
-		}
-	}
-	e.indent--
-	e.emitRaw("}")
-
-	e.emitBlankLine()
-	e.emitRaw("clone, err := original.Clone()")
-	e.emitRaw("if err != nil {")
-	e.indent++
-	e.emitRaw(`t.Fatalf("Clone() returned error: %v", err)`)
-	e.indent--
-	e.emitRaw("}")
-	e.emitBlankLine()
-
-	// Basic invariants.
-	e.emitRaw("// Verify basic invariants.")
-	e.emitRaw("if clone == nil {")
-	e.indent++
-	e.emitRaw(`t.Fatal("Clone() returned nil for non-nil input")`)
-	e.indent--
-	e.emitRaw("}")
-	e.emitRaw("if clone == original {")
-	e.indent++
-	e.emitRaw(`t.Error("Clone() returned the same pointer")`)
-	e.indent--
-	e.emitRaw("}")
-
-	e.indent--
-	e.emitRaw("}")
-}
-
-// -------------------------------------------- Deep-Copy Independence Test --------------------------------------------
-
-func (e *testEmitter) emitDeepCopyTest(info *types.StructInfo) {
-	e.emitRaw(fmt.Sprintf("func Test%s_Clone_DeepCopyIndependence(t *testing.T) {", utils.ToUpperAtN(0, info.Name)))
-	e.indent++
-	e.emitRaw("t.Parallel()")
-	e.emitBlankLine()
-
-	// Construct original with non-empty deep-copied containers.
-	e.emitRaw(fmt.Sprintf("original := &%s{", info.Name))
-	e.indent++
-	for _, field := range info.Fields {
-		if !isDeepCopiedContainer(field) {
-			continue
-		}
 		e.emitRaw(fmt.Sprintf("%s: %s,", field.Name, testFieldValue(field)))
 	}
 	e.indent--
@@ -244,96 +211,273 @@ func (e *testEmitter) emitDeepCopyTest(info *types.StructInfo) {
 	e.emitRaw(`t.Fatalf("Clone() returned error: %v", err)`)
 	e.indent--
 	e.emitRaw("}")
-	e.emitBlankLine()
 
-	// Verify independence for each deep-copied container field.
+	e.emitBlankLine()
+	e.emitComment("Basic pointer invariants.")
+	e.emitRaw("if clone == nil {")
+	e.indent++
+	e.emitRaw(`t.Fatal("Clone() returned nil for non-nil input")`)
+	e.indent--
+	e.emitRaw("}")
+	e.emitRaw("if clone == original {")
+	e.indent++
+	e.emitRaw(`t.Error("Clone() returned the same pointer as original")`)
+	e.indent--
+	e.emitRaw("}")
+
+	e.emitBlankLine()
+	e.emitComment("reflect.DeepEqual check — every non-skip field must have the same value.")
+
 	for _, field := range info.Fields {
-		if !isDeepCopiedContainer(field) {
+		if field.Directive.Skip {
+			// Skip fields must be zero in the clone — verified in emitSkipTest.
 			continue
 		}
-		e.emitDeepCopyAssertion(field, info.Name)
+		if field.Directive.Empty {
+			// Empty fields have a different (empty) value by design — verified in emitEmptyTest.
+			continue
+		}
+		e.emitRaw(fmt.Sprintf("if !reflect.DeepEqual(clone.%s, original.%s) {", field.Name, field.Name))
+		e.indent++
+		e.emitRaw(fmt.Sprintf(`t.Errorf("field %s: got %%v, want %%v", clone.%s, original.%s)`, field.Name, field.Name, field.Name))
+		e.indent--
+		e.emitRaw("}")
 	}
 
 	e.indent--
 	e.emitRaw("}")
 }
 
-func (e *testEmitter) emitDeepCopyAssertion(field types.FieldInfo, structName string) {
+// -------------------------------------------- Mutation Independence Test --------------------------------------------
+
+// emitMutationIndependenceTest emits a test that verifies deep-copied fields are truly independent.
+// For each deep container field it:
+//  1. Builds an original with non-zero values.
+//  2. Clones it.
+//  3. Mutates the CLONE's field — verifies original is unchanged.
+//  4. Resets state (re-clone from fresh original), mutates the ORIGINAL's field — verifies clone is unchanged.
+//
+// This catches bugs where Clone() returns a shallow copy that shares backing memory.
+func (e *testEmitter) emitMutationIndependenceTest(info *types.StructInfo) {
+	e.emitRaw(fmt.Sprintf("func Test%s_Clone_MutationIndependence(t *testing.T) {", utils.ToUpperAtN(0, info.Name)))
+	e.indent++
+	e.emitRaw("t.Parallel()")
+	e.emitBlankLine()
+
+	for _, field := range info.Fields {
+		if !isDeepCopiedContainer(field) {
+			continue
+		}
+
+		// Emit a sub-test per field for clear failure messages.
+		e.emitRaw(fmt.Sprintf(`t.Run("%s", func(t *testing.T) {`, field.Name))
+		e.indent++
+		e.emitRaw("t.Parallel()")
+		e.emitBlankLine()
+
+		e.emitMutationSubTest(field, info.Name)
+
+		e.indent--
+		e.emitRaw("})")
+		e.emitBlankLine()
+	}
+
+	e.indent--
+	e.emitRaw("}")
+}
+
+// emitMutationSubTest emits the body of a per-field mutation independence sub-test.
+// It always emits two directions:
+//   - mutate clone → original should be unchanged
+//   - mutate original → clone should be unchanged
+func (e *testEmitter) emitMutationSubTest(field types.FieldInfo, structName string) {
+	// Helper: build original literal with just this field populated.
+	buildOriginal := func(structName string) {
+		e.emitRaw(fmt.Sprintf("original := &%s{", structName))
+		e.indent++
+		e.emitRaw(fmt.Sprintf("%s: %s,", field.Name, testFieldValue(field)))
+		e.indent--
+		e.emitRaw("}")
+	}
+
+	clone := func() {
+		e.emitRaw("clone, err := original.Clone()")
+		e.emitRaw("if err != nil {")
+		e.indent++
+		e.emitRaw(`t.Fatalf("Clone() returned error: %v", err)`)
+		e.indent--
+		e.emitRaw("}")
+		e.emitRaw("if clone == nil {")
+		e.indent++
+		e.emitRaw(`t.Fatal("Clone() returned nil")`)
+		e.indent--
+		e.emitRaw("}")
+	}
+
 	switch field.TypeCategory {
 	case types.CatSlice:
 		if isBuiltinPrimitive(field.ElemType) {
-			e.emitRaw(fmt.Sprintf("// Mutating original.%s should not affect clone.%s.", field.Name, field.Name))
-			e.emitRaw(fmt.Sprintf("original.%s[0] = %s", field.Name, alternateSliceValue(field.ElemType)))
-			e.emitRaw(fmt.Sprintf("if clone.%s[0] == %s {", field.Name, alternateSliceValue(field.ElemType)))
+			// --- Direction 1: mutate clone → original unchanged ---
+			e.emitRaw("{") // Start block scope for direction 1
 			e.indent++
-			e.emitRaw(fmt.Sprintf(`t.Error("%s should be deep-copied (independent of original)")`, field.Name))
+			e.emitComment("Direction 1: mutate clone's slice → original must be unaffected.")
+			buildOriginal(structName)
+			clone()
+			e.emitRaw(fmt.Sprintf("beforeOriginal := original.%s[0]", field.Name))
+			e.emitRaw(fmt.Sprintf("clone.%s[0] = %s", field.Name, alternateSliceValue(field.ElemType)))
+			e.emitRaw(fmt.Sprintf("if !reflect.DeepEqual(original.%s[0], beforeOriginal) {", field.Name))
+			e.indent++
+			e.emitRaw(fmt.Sprintf(`t.Errorf("field %s: mutating clone affected original: got %%v, want %%v", original.%s[0], beforeOriginal)`, field.Name, field.Name))
 			e.indent--
 			e.emitRaw("}")
-		} else {
-			// Struct-element slices — just verify the slice header is different.
-			e.emitRaw(fmt.Sprintf("// original.%s and clone.%s should be different slices.", field.Name, field.Name))
-			e.emitRaw(fmt.Sprintf("if &original.%s[0] == &clone.%s[0] {", field.Name, field.Name))
+			e.indent--
+			e.emitRaw("}") // End block scope for direction 1
+			e.emitBlankLine()
+
+			// --- Direction 2: mutate original → clone unchanged ---
+			e.emitRaw("{") // Start block scope for direction 2
 			e.indent++
-			e.emitRaw(fmt.Sprintf(`t.Error("%s slice should be deep-copied (independent of original)")`, field.Name))
+			e.emitComment("Direction 2: mutate original's slice → clone must be unaffected.")
+			buildOriginal(structName)
+			clone()
+			e.emitRaw(fmt.Sprintf("beforeClone := clone.%s[0]", field.Name))
+			e.emitRaw(fmt.Sprintf("original.%s[0] = %s", field.Name, alternateSliceValue(field.ElemType)))
+			e.emitRaw(fmt.Sprintf("if !reflect.DeepEqual(clone.%s[0], beforeClone) {", field.Name))
+			e.indent++
+			e.emitRaw(fmt.Sprintf(`t.Errorf("field %s: mutating original affected clone: got %%v, want %%v", clone.%s[0], beforeClone)`, field.Name, field.Name))
+			e.indent--
+			e.emitRaw("}")
+			e.indent--
+			e.emitRaw("}") // End block scope for direction 2
+		} else {
+			// Non-primitive slice: verify backing array pointers differ.
+			e.emitComment("Struct-element slice: verify backing array is independent (different pointer).")
+			buildOriginal(structName)
+			clone()
+			e.emitRaw(fmt.Sprintf("if len(original.%s) > 0 && len(clone.%s) > 0 && &original.%s[0] == &clone.%s[0] {", field.Name, field.Name, field.Name, field.Name))
+			e.indent++
+			e.emitRaw(fmt.Sprintf(`t.Errorf("field %s: clone shares backing array with original")`, field.Name))
 			e.indent--
 			e.emitRaw("}")
 		}
-		e.emitBlankLine()
 
 	case types.CatMap:
 		if isBuiltinPrimitive(field.ValueType) {
-			e.emitRaw(fmt.Sprintf("// Mutating original.%s should not affect clone.%s.", field.Name, field.Name))
-			e.emitRaw(fmt.Sprintf("original.%s[%s] = %s", field.Name, mapTestKey(field.KeyType), alternateMapValue(field.ValueType)))
-			e.emitRaw(fmt.Sprintf("if clone.%s[%s] == %s {", field.Name, mapTestKey(field.KeyType), alternateMapValue(field.ValueType)))
+			mutKey := mapTestKey(field.KeyType)
+			mutVal := alternateMapValue(field.ValueType)
+
+			// --- Direction 1: mutate clone → original unchanged ---
+			e.emitRaw("{")
 			e.indent++
-			e.emitRaw(fmt.Sprintf(`t.Error("%s should be deep-copied (independent of original)")`, field.Name))
+			e.emitComment("Direction 1: mutate clone's map → original must be unaffected.")
+			buildOriginal(structName)
+			clone()
+			e.emitRaw(fmt.Sprintf("beforeOriginal := original.%s[%s]", field.Name, mutKey))
+			e.emitRaw(fmt.Sprintf("clone.%s[%s] = %s", field.Name, mutKey, mutVal))
+			e.emitRaw(fmt.Sprintf("if !reflect.DeepEqual(original.%s[%s], beforeOriginal) {", field.Name, mutKey))
+			e.indent++
+			e.emitRaw(fmt.Sprintf(`t.Errorf("field %s: mutating clone affected original: got %%v, want %%v", original.%s[%s], beforeOriginal)`, field.Name, field.Name, mutKey))
+			e.indent--
+			e.emitRaw("}")
+			e.indent--
+			e.emitRaw("}")
+			e.emitBlankLine()
+
+			// --- Direction 2: mutate original → clone unchanged ---
+			e.emitRaw("{")
+			e.indent++
+			e.emitComment("Direction 2: mutate original's map → clone must be unaffected.")
+			buildOriginal(structName)
+			clone()
+			e.emitRaw(fmt.Sprintf("beforeClone := clone.%s[%s]", field.Name, mutKey))
+			e.emitRaw(fmt.Sprintf("original.%s[%s] = %s", field.Name, mutKey, mutVal))
+			e.emitRaw(fmt.Sprintf("if !reflect.DeepEqual(clone.%s[%s], beforeClone) {", field.Name, mutKey))
+			e.indent++
+			e.emitRaw(fmt.Sprintf(`t.Errorf("field %s: mutating original affected clone: got %%v, want %%v", clone.%s[%s], beforeClone)`, field.Name, field.Name, mutKey))
+			e.indent--
+			e.emitRaw("}")
 			e.indent--
 			e.emitRaw("}")
 		} else {
-			// Struct-value maps — just verify the map header is different.
-			e.emitRaw(fmt.Sprintf("// original.%s and clone.%s should be different maps.", field.Name, field.Name))
-			e.emitRaw(fmt.Sprintf("if len(original.%s) > 0 && len(clone.%s) > 0 {", field.Name, field.Name))
+			// Struct-value map: verify the map headers are different objects by adding a new key.
+			newKey := mapTestKey(field.KeyType)
+			e.emitComment("Struct-value map: verify the two maps are independent (new key inserted in clone must not appear in original).")
+			buildOriginal(structName)
+			clone()
+			e.emitRaw(fmt.Sprintf("clone.%s[%s] = %s{}", field.Name, newKey, field.ValueType))
+			e.emitRaw(fmt.Sprintf("if _, ok := original.%s[%s]; ok {", field.Name, newKey))
 			e.indent++
-			e.emitRaw(fmt.Sprintf("original.%s[%s] = %s{}", field.Name, mapTestKey(field.KeyType), field.ValueType))
-			e.emitRaw(fmt.Sprintf("if _, ok := clone.%s[%s]; !ok {", field.Name, mapTestKey(field.KeyType)))
-			e.indent++
-			e.emitRaw("// clone should not have the new key — maps are independent")
-			e.indent--
-			e.emitRaw("}")
-			e.indent--
-			e.emitRaw("}")
+			e.emitRaw(fmt.Sprintf(`t.Errorf("field %s: new key inserted in clone appeared in original")`, field.Name))
 			e.indent--
 			e.emitRaw("}")
 		}
-		e.emitBlankLine()
 
 	case types.CatPtrPrimitive:
-		e.emitRaw(fmt.Sprintf("// original.%s and clone.%s should point to different values.", field.Name, field.Name))
-		e.emitRaw(fmt.Sprintf("if original.%s != nil && clone.%s != nil && original.%s == clone.%s {", field.Name, field.Name, field.Name, field.Name))
+		origVal := primitiveTestValue(field.PointedToType)
+		altVal := alternateSliceValue(field.PointedToType)
+
+		// --- Direction 1: mutate clone → original unchanged ---
+		e.emitRaw("{")
 		e.indent++
-		e.emitRaw(fmt.Sprintf(`t.Error("%s should be deep-copied (independent pointer)")`, field.Name))
+		e.emitComment("Direction 1: mutate value through clone's pointer → original's pointed-to value must be unaffected.")
+		buildOriginal(structName)
+		clone()
+		e.emitRaw(fmt.Sprintf("if original.%s != nil && clone.%s != nil {", field.Name, field.Name))
+		e.indent++
+		e.emitRaw(fmt.Sprintf("beforeOriginal := *original.%s", field.Name))
+		e.emitRaw(fmt.Sprintf("*clone.%s = %s", field.Name, altVal))
+		e.emitRaw(fmt.Sprintf("if !reflect.DeepEqual(*original.%s, beforeOriginal) {", field.Name))
+		e.indent++
+		e.emitRaw(fmt.Sprintf(`t.Errorf("field %s: mutating clone affected original: got %%v, want %%v", *original.%s, beforeOriginal)`, field.Name, field.Name))
+		e.indent--
+		e.emitRaw("}")
+		e.indent--
+		e.emitRaw("}")
 		e.indent--
 		e.emitRaw("}")
 		e.emitBlankLine()
+
+		// --- Direction 2: mutate original → clone unchanged ---
+		e.emitRaw("{")
+		e.indent++
+		e.emitComment("Direction 2: mutate value through original's pointer → clone's pointed-to value must be unaffected.")
+		buildOriginal(structName)
+		clone()
+		e.emitRaw(fmt.Sprintf("if original.%s != nil && clone.%s != nil {", field.Name, field.Name))
+		e.indent++
+		e.emitRaw(fmt.Sprintf("beforeClone := *clone.%s", field.Name))
+		e.emitRaw(fmt.Sprintf("*original.%s = %s", field.Name, origVal))
+		e.emitRaw(fmt.Sprintf("if !reflect.DeepEqual(*clone.%s, beforeClone) {", field.Name))
+		e.indent++
+		e.emitRaw(fmt.Sprintf(`t.Errorf("field %s: mutating original affected clone: got %%v, want %%v", *clone.%s, beforeClone)`, field.Name, field.Name))
+		e.indent--
+		e.emitRaw("}")
+		e.indent--
+		e.emitRaw("}")
+		e.indent--
+		e.emitRaw("}")
 
 	case types.CatPtrStruct:
-		e.emitRaw(fmt.Sprintf("// original.%s and clone.%s should point to different structs.", field.Name, field.Name))
+		// Pointer equality check — the two pointers must differ.
+		e.emitComment("Pointer-to-struct: the clone and original must point to different structs.")
+		buildOriginal(structName)
+		clone()
 		e.emitRaw(fmt.Sprintf("if original.%s != nil && clone.%s != nil && original.%s == clone.%s {", field.Name, field.Name, field.Name, field.Name))
 		e.indent++
-		e.emitRaw(fmt.Sprintf(`t.Error("%s should be deep-copied (independent pointer)")`, field.Name))
+		e.emitRaw(fmt.Sprintf(`t.Errorf("field %s: clone and original share the same pointer")`, field.Name))
 		e.indent--
 		e.emitRaw("}")
-		e.emitBlankLine()
 
 	case types.CatStruct:
-		// Value structs that are deep-copied via .Clone() — verify field address is different.
-		e.emitRaw(fmt.Sprintf("// original.%s and clone.%s should be different struct values.", field.Name, field.Name))
+		// Value struct: addresses must differ.
+		e.emitComment("Value struct: verify deep copies are independent by address.")
+		buildOriginal(structName)
+		clone()
 		e.emitRaw(fmt.Sprintf("if &original.%s == &clone.%s {", field.Name, field.Name))
 		e.indent++
-		e.emitRaw(fmt.Sprintf(`t.Error("%s should be deep-copied (independent struct)")`, field.Name))
+		e.emitRaw(fmt.Sprintf(`t.Errorf("field %s: clone and original share the same struct address")`, field.Name))
 		e.indent--
 		e.emitRaw("}")
-		e.emitBlankLine()
 	}
 }
 
@@ -345,7 +489,7 @@ func (e *testEmitter) emitSkipTest(info *types.StructInfo) {
 	e.emitRaw("t.Parallel()")
 	e.emitBlankLine()
 
-	// Build original with non-zero skip fields.
+	e.emitComment("Build original with non-zero values for skip-tagged fields.")
 	e.emitRaw(fmt.Sprintf("original := &%s{", info.Name))
 	e.indent++
 	for _, field := range info.Fields {
@@ -365,13 +509,18 @@ func (e *testEmitter) emitSkipTest(info *types.StructInfo) {
 	e.emitRaw("}")
 	e.emitBlankLine()
 
-	// Verify each skip field has its zero value.
 	for _, field := range info.Fields {
 		if !field.Directive.Skip {
 			continue
 		}
-		e.emitRaw(fmt.Sprintf("// Skip-tagged field %s should receive its zero value.", field.Name))
-		e.emitRaw(fmt.Sprintf("if clone.%s != %s {", field.Name, zeroValue(field)))
+		e.emitComment(fmt.Sprintf("Skip-tagged field %s must be zero-valued in the clone.", field.Name))
+		zeroVal := zeroValue(field)
+		if field.TypeCategory == types.CatStruct {
+			// Structs: use reflect.DeepEqual against zero literal for comparability.
+			e.emitRaw(fmt.Sprintf("if !reflect.DeepEqual(clone.%s, %s) {", field.Name, zeroVal))
+		} else {
+			e.emitRaw(fmt.Sprintf("if clone.%s != %s {", field.Name, zeroVal))
+		}
 		e.indent++
 		e.emitRaw(fmt.Sprintf(`t.Errorf("skip field %s = %%v, want zero value", clone.%s)`, field.Name, field.Name))
 		e.indent--
@@ -391,7 +540,7 @@ func (e *testEmitter) emitShallowTest(info *types.StructInfo) {
 	e.emitRaw("t.Parallel()")
 	e.emitBlankLine()
 
-	// Build original with non-zero shallow container fields.
+	e.emitComment("Build original with non-zero shallow container fields.")
 	e.emitRaw(fmt.Sprintf("original := &%s{", info.Name))
 	e.indent++
 	for _, field := range info.Fields {
@@ -411,54 +560,49 @@ func (e *testEmitter) emitShallowTest(info *types.StructInfo) {
 	e.emitRaw("}")
 	e.emitBlankLine()
 
-	// Verify each shallow container shares the same reference.
 	for _, field := range info.Fields {
 		if !field.Directive.Shallow || !isContainerType(field.TypeCategory) {
 			continue
 		}
-		e.emitRaw(fmt.Sprintf("// Shallow-tagged field %s should share the same reference.", field.Name))
+		e.emitComment(fmt.Sprintf("Shallow-tagged field %s: mutation of original must be visible in clone (shared reference).", field.Name))
 		switch field.TypeCategory {
-		case types.CatMap:
-			// Maps can only be compared to nil in Go, so verify via mutation.
-			e.emitRaw(fmt.Sprintf("// Mutate original.%s and verify clone.%s is affected (same reference).", field.Name, field.Name))
-			if isBuiltinPrimitive(field.ValueType) {
-				e.emitRaw(fmt.Sprintf("original.%s[%s] = %s", field.Name, mapTestKey(field.KeyType), alternateMapValue(field.ValueType)))
-				e.emitRaw(fmt.Sprintf("if clone.%s[%s] != %s {", field.Name, mapTestKey(field.KeyType), alternateMapValue(field.ValueType)))
+		case types.CatSlice:
+			if isBuiltinPrimitive(field.ElemType) {
+				e.emitRaw(fmt.Sprintf("original.%s[0] = %s", field.Name, alternateSliceValue(field.ElemType)))
+				e.emitRaw(fmt.Sprintf("if !reflect.DeepEqual(clone.%s[0], original.%s[0]) {", field.Name, field.Name))
 				e.indent++
-				e.emitRaw(fmt.Sprintf(`t.Error("%s (shallow) should share the same reference as the original")`, field.Name))
+				e.emitRaw(fmt.Sprintf(`t.Errorf("shallow field %s: clone did not reflect original mutation — expected shared reference")`, field.Name))
 				e.indent--
 				e.emitRaw("}")
 			} else {
-				// Non-primitive map values — check via length mutation.
+				e.emitRaw(fmt.Sprintf("if len(original.%s) > 0 && &original.%s[0] != &clone.%s[0] {", field.Name, field.Name, field.Name))
+				e.indent++
+				e.emitRaw(fmt.Sprintf(`t.Errorf("shallow field %s: clone does not share backing array with original")`, field.Name))
+				e.indent--
+				e.emitRaw("}")
+			}
+		case types.CatMap:
+			if isBuiltinPrimitive(field.ValueType) {
+				e.emitRaw(fmt.Sprintf("original.%s[%s] = %s", field.Name, mapTestKey(field.KeyType), alternateMapValue(field.ValueType)))
+				e.emitRaw(fmt.Sprintf("if !reflect.DeepEqual(clone.%s[%s], original.%s[%s]) {", field.Name, mapTestKey(field.KeyType), field.Name, mapTestKey(field.KeyType)))
+				e.indent++
+				e.emitRaw(fmt.Sprintf(`t.Errorf("shallow field %s: clone did not reflect original map mutation — expected shared reference")`, field.Name))
+				e.indent--
+				e.emitRaw("}")
+			} else {
 				e.emitRaw(fmt.Sprintf("originalLen := len(original.%s)", field.Name))
 				e.emitRaw(fmt.Sprintf("for k := range original.%s { original.%s[k] = %s{}; break }", field.Name, field.Name, field.ValueType))
 				e.emitRaw(fmt.Sprintf("if len(clone.%s) != originalLen {", field.Name))
 				e.indent++
-				e.emitRaw(fmt.Sprintf(`t.Error("%s (shallow) should share the same reference as the original")`, field.Name))
-				e.indent--
-				e.emitRaw("}")
-			}
-		case types.CatSlice:
-			// Slices can be compared with reflect.DeepEqual or by checking if header mutation affects both.
-			e.emitRaw(fmt.Sprintf("// Mutate original.%s and verify clone.%s is affected (same reference).", field.Name, field.Name))
-			if isBuiltinPrimitive(field.ElemType) {
-				e.emitRaw(fmt.Sprintf("original.%s[0] = %s", field.Name, alternateSliceValue(field.ElemType)))
-				e.emitRaw(fmt.Sprintf("if clone.%s[0] != %s {", field.Name, alternateSliceValue(field.ElemType)))
-				e.indent++
-				e.emitRaw(fmt.Sprintf(`t.Error("%s (shallow) should share the same reference as the original")`, field.Name))
-				e.indent--
-				e.emitRaw("}")
-			} else {
-				e.emitRaw(fmt.Sprintf("if &original.%s[0] != &clone.%s[0] {", field.Name, field.Name))
-				e.indent++
-				e.emitRaw(fmt.Sprintf(`t.Error("%s (shallow) should share the same backing array")`, field.Name))
+				e.emitRaw(fmt.Sprintf(`t.Errorf("shallow field %s: clone does not share map reference with original")`, field.Name))
 				e.indent--
 				e.emitRaw("}")
 			}
 		case types.CatPtrPrimitive, types.CatPtrStruct:
+			// Pointer equality: both must point to the exact same object.
 			e.emitRaw(fmt.Sprintf("if clone.%s != original.%s {", field.Name, field.Name))
 			e.indent++
-			e.emitRaw(fmt.Sprintf(`t.Error("%s (shallow) should share the same reference as the original")`, field.Name))
+			e.emitRaw(fmt.Sprintf(`t.Errorf("shallow field %s: clone pointer %%p != original pointer %%p", clone.%s, original.%s)`, field.Name, field.Name, field.Name))
 			e.indent--
 			e.emitRaw("}")
 		}
@@ -477,7 +621,7 @@ func (e *testEmitter) emitEmptyTest(info *types.StructInfo) {
 	e.emitRaw("t.Parallel()")
 	e.emitBlankLine()
 
-	// Build original with non-empty values for empty-tagged fields.
+	e.emitComment("Build original with non-empty values for empty-tagged fields.")
 	e.emitRaw(fmt.Sprintf("original := &%s{", info.Name))
 	e.indent++
 	for _, field := range info.Fields {
@@ -497,48 +641,47 @@ func (e *testEmitter) emitEmptyTest(info *types.StructInfo) {
 	e.emitRaw("}")
 	e.emitBlankLine()
 
-	// Verify each empty-tagged container field is empty but non-nil.
 	for _, field := range info.Fields {
 		if !field.Directive.Empty || isPrimitiveCategory(field.TypeCategory) {
 			continue
 		}
 		switch field.TypeCategory {
 		case types.CatSlice:
-			e.emitRaw(fmt.Sprintf("// Empty-tagged field %s should be non-nil with length 0.", field.Name))
+			e.emitComment(fmt.Sprintf("Empty-tagged field %s: clone must be non-nil with length 0.", field.Name))
 			e.emitRaw(fmt.Sprintf("if clone.%s == nil {", field.Name))
 			e.indent++
-			e.emitRaw(fmt.Sprintf(`t.Error("%s (empty) should be non-nil")`, field.Name))
+			e.emitRaw(fmt.Sprintf(`t.Errorf("empty field %s: clone is nil, want non-nil empty slice")`, field.Name))
 			e.indent--
 			e.emitRaw("}")
 			e.emitRaw(fmt.Sprintf("if len(clone.%s) != 0 {", field.Name))
 			e.indent++
-			e.emitRaw(fmt.Sprintf(`t.Errorf("empty field %s should have length 0, got %%d", len(clone.%s))`, field.Name, field.Name))
+			e.emitRaw(fmt.Sprintf(`t.Errorf("empty field %s: clone has length %%d, want 0", len(clone.%s))`, field.Name, field.Name))
 			e.indent--
 			e.emitRaw("}")
 		case types.CatMap:
-			e.emitRaw(fmt.Sprintf("// Empty-tagged field %s should be non-nil with length 0.", field.Name))
+			e.emitComment(fmt.Sprintf("Empty-tagged field %s: clone must be non-nil with length 0.", field.Name))
 			e.emitRaw(fmt.Sprintf("if clone.%s == nil {", field.Name))
 			e.indent++
-			e.emitRaw(fmt.Sprintf(`t.Error("%s (empty) should be non-nil")`, field.Name))
+			e.emitRaw(fmt.Sprintf(`t.Errorf("empty field %s: clone is nil, want non-nil empty map")`, field.Name))
 			e.indent--
 			e.emitRaw("}")
 			e.emitRaw(fmt.Sprintf("if len(clone.%s) != 0 {", field.Name))
 			e.indent++
-			e.emitRaw(fmt.Sprintf(`t.Errorf("empty field %s should have length 0, got %%d", len(clone.%s))`, field.Name, field.Name))
+			e.emitRaw(fmt.Sprintf(`t.Errorf("empty field %s: clone has length %%d, want 0", len(clone.%s))`, field.Name, field.Name))
 			e.indent--
 			e.emitRaw("}")
 		case types.CatPtrStruct, types.CatPtrPrimitive:
-			e.emitRaw(fmt.Sprintf("// Empty-tagged field %s should be non-nil.", field.Name))
+			e.emitComment(fmt.Sprintf("Empty-tagged field %s: clone must be non-nil.", field.Name))
 			e.emitRaw(fmt.Sprintf("if clone.%s == nil {", field.Name))
 			e.indent++
-			e.emitRaw(fmt.Sprintf(`t.Error("%s (empty) should be non-nil")`, field.Name))
+			e.emitRaw(fmt.Sprintf(`t.Errorf("empty field %s: clone is nil, want non-nil empty pointer")`, field.Name))
 			e.indent--
 			e.emitRaw("}")
 		case types.CatStruct:
-			e.emitRaw(fmt.Sprintf("// Empty-tagged field %s should be zero-valued struct.", field.Name))
-			e.emitRaw(fmt.Sprintf("if clone.%s != (%s{}) {", field.Name, field.Type))
+			e.emitComment(fmt.Sprintf("Empty-tagged field %s: clone must be zero-valued struct.", field.Name))
+			e.emitRaw(fmt.Sprintf("if !reflect.DeepEqual(clone.%s, (%s{})) {", field.Name, field.Type))
 			e.indent++
-			e.emitRaw(fmt.Sprintf(`t.Errorf("empty field %s should be zero-valued struct")`, field.Name))
+			e.emitRaw(fmt.Sprintf(`t.Errorf("empty field %s: clone = %%v, want zero struct", clone.%s)`, field.Name, field.Name))
 			e.indent--
 			e.emitRaw("}")
 		}
@@ -552,16 +695,12 @@ func (e *testEmitter) emitEmptyTest(info *types.StructInfo) {
 // -------------------------------------------- Clone-Tag Stub Test --------------------------------------------
 
 // emitCloneTagStubTest emits a minimal test stub for structs that use the "clone" directive.
-// Since the convention-based clone functions (e.g., CloneTypeNameField) are user-provided
-// and may not exist yet, we emit a placeholder test with instructions rather than calling
-// Clone() directly (which would fail to compile).
 func (e *testEmitter) emitCloneTagStubTest(info *types.StructInfo) {
 	e.emitRaw(fmt.Sprintf("func Test%s_Clone_Placeholder(t *testing.T) {", utils.ToUpperAtN(0, info.Name)))
 	e.indent++
 	e.emitRaw("t.Parallel()")
 	e.emitBlankLine()
 
-	// List the clone-tagged fields that need user-provided functions.
 	var cloneFields []string
 	for _, field := range info.Fields {
 		if field.Directive.Clone {
@@ -572,7 +711,7 @@ func (e *testEmitter) emitCloneTagStubTest(info *types.StructInfo) {
 	e.emitComment(fmt.Sprintf("%s uses the 'clone' directive on field(s): %s.", info.Name, strings.Join(cloneFields, ", ")))
 	e.emitComment("The generated Clone() method depends on convention-based clone functions that must be")
 	e.emitComment("provided by the user. Once those functions are implemented, replace this placeholder")
-	e.emitComment("with comprehensive tests for nil safety, round-trip, and deep-copy independence.")
+	e.emitComment("with comprehensive tests for nil safety, round-trip, and mutation independence.")
 	e.emitBlankLine()
 	e.emitComment("Expected function signatures:")
 	for _, field := range info.Fields {
@@ -591,10 +730,6 @@ func (e *testEmitter) emitCloneTagStubTest(info *types.StructInfo) {
 
 // testFieldValue returns a Go expression that creates a non-zero test value for the field.
 func testFieldValue(field types.FieldInfo) string {
-	if field.Directive.Skip || field.Directive.Shallow || field.Directive.Empty || field.Directive.Clone {
-		// For skip/shallow/empty/clone fields, still generate a value so we can test them.
-	}
-
 	switch field.TypeCategory {
 	case types.CatPrimitive:
 		return primitiveTestValue(field.Type)
@@ -671,7 +806,6 @@ func sliceTestValue(field types.FieldInfo) string {
 	if isBuiltinPrimitive(elem) {
 		return fmt.Sprintf("%s{%s, %s}", field.Type, primitiveTestValue(elem), primitiveTestValueAlternate(elem))
 	}
-	// Struct element — use zero-value structs.
 	return fmt.Sprintf("%s{{}, {}}", field.Type)
 }
 
@@ -684,13 +818,11 @@ func mapTestLiteral(field types.FieldInfo) string {
 
 // mapTestKey returns a Go expression for a test map key.
 func mapTestKey(keyType string) string {
+	if keyType == "string" {
+		return `"k"`
+	}
 	if isBuiltinPrimitive(keyType) {
-		v := primitiveTestValue(keyType)
-		// For string keys, use a shorter value.
-		if keyType == "string" {
-			return `"k"`
-		}
-		return v
+		return primitiveTestValue(keyType)
 	}
 	return fmt.Sprintf("%s{}", keyType)
 }
@@ -703,8 +835,7 @@ func mapTestValueLiteral(valType string) string {
 	return fmt.Sprintf("%s{}", valType)
 }
 
-// alternateSliceValue returns a different Go literal than testFieldValue for the element type,
-// used to mutate the original and verify the clone is independent.
+// alternateSliceValue returns a different literal than the default test value, used to detect shared backing memory.
 func alternateSliceValue(elemType string) string {
 	switch elemType {
 	case "string":
@@ -726,12 +857,12 @@ func alternateSliceValue(elemType string) string {
 	}
 }
 
-// alternateMapValue returns a different Go literal for the value type.
+// alternateMapValue returns a different literal for map value mutation.
 func alternateMapValue(valType string) string {
 	return alternateSliceValue(valType)
 }
 
-// primitiveTestValueAlternate returns a second, different non-zero Go literal for a primitive type.
+// primitiveTestValueAlternate returns a second, distinct non-zero literal for a primitive type.
 func primitiveTestValueAlternate(typeStr string) string {
 	switch typeStr {
 	case "string":
@@ -789,7 +920,7 @@ func zeroValue(field types.FieldInfo) string {
 	}
 }
 
-// primitiveZeroValue returns a Go expression for the zero value of a primitive type.
+// primitiveZeroValue returns the zero-value expression for a primitive type.
 func primitiveZeroValue(typeStr string) string {
 	switch typeStr {
 	case "string":
@@ -841,8 +972,8 @@ func (e *testEmitter) hasPtrPrimitiveFields(info *types.StructInfo) bool {
 	return false
 }
 
-// hasDeepContainerFields reports whether the struct has any deep-copied container fields
-// (slices, maps, pointers) where independence should be verified.
+// hasDeepContainerFields reports whether the struct has at least one deep-copied container field
+// (slice, map, pointer) that requires mutation independence verification.
 func (e *testEmitter) hasDeepContainerFields(info *types.StructInfo) bool {
 	for _, field := range info.Fields {
 		if isDeepCopiedContainer(field) {
@@ -892,8 +1023,8 @@ func (e *testEmitter) hasCloneTagFields(info *types.StructInfo) bool {
 	return false
 }
 
-// isDeepCopiedContainer reports whether a field is a deep-copied container
-// (slice, map, or pointer) where the clone should be independent of the original.
+// isDeepCopiedContainer reports whether a field will be deep-copied (not skip/shallow/empty/clone)
+// and has a container type that could expose shared backing memory.
 func isDeepCopiedContainer(field types.FieldInfo) bool {
 	if field.Directive.Skip || field.Directive.Shallow || field.Directive.Empty || field.Directive.Clone {
 		return false
@@ -905,7 +1036,7 @@ func isDeepCopiedContainer(field types.FieldInfo) bool {
 	return false
 }
 
-// isContainerType reports whether the type category is a container (slice, map, pointer).
+// isContainerType reports whether the type category is a container (slice, map, or pointer).
 func isContainerType(cat types.TypeCategory) bool {
 	switch cat {
 	case types.CatSlice, types.CatMap, types.CatPtrPrimitive, types.CatPtrStruct:

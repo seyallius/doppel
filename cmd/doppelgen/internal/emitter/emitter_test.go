@@ -332,7 +332,7 @@ func TestGoldenFile_BasicUser(t *testing.T) {
 	}
 
 	// Load golden file.
-	goldenPath := filepath.Join("..", "..", "testdata", "basicuser_clone.gen.go.golden")
+	goldenPath := filepath.Join("..", "..", "testdata", "basicuser.clone_gen.go.golden")
 	golden, err := os.ReadFile(goldenPath)
 	if err != nil {
 		t.Skipf("golden file not found: %v", err)

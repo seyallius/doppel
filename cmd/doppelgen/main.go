@@ -87,7 +87,7 @@ func run(cfg *types.GeneratorConfig) error {
 		}
 
 		if cfg.Preview {
-			_, _ = fmt.Fprintf(os.Stdout, "// --- %s_clone.gen.go ---\n", strings.ToLower(typeName))
+			_, _ = fmt.Fprintf(os.Stdout, "// --- %s.clone_gen.go ---\n", strings.ToLower(typeName))
 			_, _ = fmt.Fprintln(os.Stdout, code)
 			_, _ = fmt.Fprintln(os.Stdout)
 		}
@@ -112,7 +112,7 @@ func run(cfg *types.GeneratorConfig) error {
 				return fmt.Errorf("generate %s: %w", typeName, err)
 			}
 
-			fileName := filepath.Join(outputDir, fmt.Sprintf("%s_clone.gen.go", strings.ToLower(typeName)))
+			fileName := filepath.Join(outputDir, fmt.Sprintf("%s.clone_gen.go", strings.ToLower(typeName)))
 			if err = os.WriteFile(fileName, []byte(code), 0644); err != nil {
 				return fmt.Errorf("write %s: %w", fileName, err)
 			}
@@ -124,7 +124,7 @@ func run(cfg *types.GeneratorConfig) error {
 			if testErr != nil {
 				_, _ = fmt.Fprintf(os.Stderr, "  ⚠ generate test for %s: %v\n", typeName, testErr)
 			} else {
-				testFileName := filepath.Join(outputDir, fmt.Sprintf("%s_clone_gen_test.go", strings.ToLower(typeName)))
+				testFileName := filepath.Join(outputDir, fmt.Sprintf("%s.clone_gen_test.go", strings.ToLower(typeName)))
 				if testErr = os.WriteFile(testFileName, []byte(testCode), 0644); testErr != nil {
 					return fmt.Errorf("write %s: %w", testFileName, testErr)
 				}

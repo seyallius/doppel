@@ -66,7 +66,7 @@ type GeneratorConfig struct {
 
 // GenerationUnit represents a single file to be generated, containing one or more Clone() methods.
 type GenerationUnit struct {
-	FileName string        // output filename (e.g., "user_clone.gen.go")
+	FileName string        // output filename (e.g., "user.clone_gen.go")
 	Package  string        // package name
 	Imports  []ImportSpec  // required imports
 	Structs  []*StructInfo // structs to generate Clone() for

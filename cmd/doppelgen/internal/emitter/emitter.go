@@ -302,7 +302,7 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string, varNam
 			e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) → manual.CloneSlice with Identity[%s].", field.Name, elemType))
 			e.emitRaw(fmt.Sprintf("%s, err := manual.CloneSlice(x.%s, manual.Identity[%s])", varName, field.Name, elemType))
 		} else {
-			// Struct element: Clone() returns (*T, error); the closure must return (T, error).
+			// Struct element: Clone() returns (*T, error); the closure must return (*T, error).
 			// Dereference the pointer inside the closure, guarding against nil.
 			e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) → manual.CloneSlice with Clone(), dereference pointer result.", field.Name))
 			e.emitRaw(fmt.Sprintf("%s, err := manual.CloneSlice(x.%s, func(v %s) (%s, error) {", varName, field.Name, elemType, elemType))
@@ -310,15 +310,15 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string, varNam
 			e.emitRaw("cloned, cloneErr := v.Clone()")
 			e.emitRaw("if cloneErr != nil {")
 			e.indent++
-			e.emitRaw(fmt.Sprintf("return %s{}, cloneErr", elemType))
+			e.emitRaw(fmt.Sprintf("return %s, cloneErr", emptyLiteralForType(elemType)))
 			e.indent--
 			e.emitRaw("}")
 			e.emitRaw("if cloned == nil {")
 			e.indent++
-			e.emitRaw(fmt.Sprintf("return %s{}, nil", elemType))
+			e.emitRaw(fmt.Sprintf("return %s, nil", emptyLiteralForType(elemType)))
 			e.indent--
 			e.emitRaw("}")
-			e.emitRaw("return *cloned, nil")
+			e.emitRaw(fmt.Sprintf("return %s, nil", derefIfNeeded(elemType, "cloned")))
 			e.indent--
 			e.emitRaw("})")
 		}
@@ -341,15 +341,15 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string, varNam
 			e.emitRaw("cloned, cloneErr := v.Clone()")
 			e.emitRaw("if cloneErr != nil {")
 			e.indent++
-			e.emitRaw(fmt.Sprintf("return %s{}, cloneErr", valType))
+			e.emitRaw(fmt.Sprintf("return %s, cloneErr", emptyLiteralForType(valType)))
 			e.indent--
 			e.emitRaw("}")
 			e.emitRaw("if cloned == nil {")
 			e.indent++
-			e.emitRaw(fmt.Sprintf("return %s{}, nil", valType))
+			e.emitRaw(fmt.Sprintf("return %s, nil", emptyLiteralForType(valType)))
 			e.indent--
 			e.emitRaw("}")
-			e.emitRaw("return *cloned, nil")
+			e.emitRaw(fmt.Sprintf("return %s, nil", derefIfNeeded(valType, "cloned")))
 			e.indent--
 			e.emitRaw("})")
 		}
@@ -377,15 +377,15 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string, varNam
 		e.emitRaw("cloned, cloneErr := v.Clone()")
 		e.emitRaw("if cloneErr != nil {")
 		e.indent++
-		e.emitRaw(fmt.Sprintf("return %s{}, cloneErr", field.PointedToType))
+		e.emitRaw(fmt.Sprintf("return %s, cloneErr", emptyLiteralForType(field.PointedToType)))
 		e.indent--
 		e.emitRaw("}")
 		e.emitRaw("if cloned == nil {")
 		e.indent++
-		e.emitRaw(fmt.Sprintf("return %s{}, nil", field.PointedToType))
+		e.emitRaw(fmt.Sprintf("return %s, nil", emptyLiteralForType(field.PointedToType)))
 		e.indent--
 		e.emitRaw("}")
-		e.emitRaw("return *cloned, nil")
+		e.emitRaw(fmt.Sprintf("return %s, nil", derefIfNeeded(field.PointedToType, "cloned")))
 		e.indent--
 		e.emitRaw("})")
 		e.emitRaw("if err != nil {")
@@ -460,4 +460,23 @@ func isBuiltinPrimitive(t string) bool {
 	default:
 		return false
 	}
+}
+
+// emptyLiteralForType returns the Go expression for an empty value of the given type.
+// For pointer types (*T), returns &T{}. For value types (T), returns T{}.
+func emptyLiteralForType(typeExpr string) string {
+	if len(typeExpr) > 0 && typeExpr[0] == '*' {
+		return "&" + typeExpr[1:] + "{}" // Pointer type: *Address → &Address{}
+	}
+	return typeExpr + "{}" // Value type: Address → Address{}
+}
+
+// derefIfNeeded returns the variable name, dereferencing it if the target type is a value type.
+// For pointer types (*T), the variable is already *T, so return as-is.
+// For value types (T), the variable is *T from Clone(), so we dereference with *.
+func derefIfNeeded(typeExpr, varName string) string {
+	if len(typeExpr) > 0 && typeExpr[0] == '*' {
+		return varName // Already a pointer, no deref needed
+	}
+	return "*" + varName // Value type: dereference the *T returned by Clone()
 }

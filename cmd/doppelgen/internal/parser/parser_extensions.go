@@ -332,6 +332,8 @@ func parseASTFilesWithResolver(
 	result.Package = files[0].Name.Name
 	result.FileCount = len(files)
 
+	primitiveAliases := collectPrimitiveAliases(files)
+
 	// Collect all method declarations to detect existing Clone() methods.
 	existingCloneTypes := collectExistingCloneMethods(files)
 
@@ -406,6 +408,9 @@ func parseASTFilesWithResolver(
 				for _, field := range structType.Fields.List {
 					fileImports := buildFileImports(file)
 					fieldInfos := parseFieldWithResolver(field, typeName, filePath, tagKey, fileImports, resolver)
+					for i := range fieldInfos {
+						resolveTypeCategoryWithAliases(&fieldInfos[i], primitiveAliases)
+					}
 					structInfo.Fields = append(structInfo.Fields, fieldInfos...)
 				}
 

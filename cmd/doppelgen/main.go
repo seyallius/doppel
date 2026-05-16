@@ -112,13 +112,11 @@ func run(cfg *types.GeneratorConfig) error {
 
 	// ── Step 7: Write files (non-preview mode) ────────────────────────────
 	if !cfg.Preview {
-		outputDir := cfg.Output
-		if outputDir == "" {
-			outputDir = targetDir
-		}
-
-		if mkErr := os.MkdirAll(outputDir, 0755); mkErr != nil {
-			return fmt.Errorf("create output directory: %w", mkErr)
+		// Create default output dir only if explicitly requested via --output.
+		if cfg.Output != "" {
+			if mkErr := os.MkdirAll(cfg.Output, 0755); mkErr != nil {
+				return fmt.Errorf("create output directory: %w", mkErr)
+			}
 		}
 
 		for _, typeName := range sortedKeys {
@@ -129,9 +127,14 @@ func run(cfg *types.GeneratorConfig) error {
 				return fmt.Errorf("generate %s: %w", typeName, genErr)
 			}
 
+			outputDirForStruct := determineOutputDirectory(cfg, typeName, info, targetDir)
+			if mkErr := os.MkdirAll(outputDirForStruct, 0755); mkErr != nil {
+				return fmt.Errorf("create output directory for %s: %w", typeName, mkErr)
+			}
+
 			// Use the plain type name (without "pkg." prefix) as the file name.
 			baseName := plainTypeName(typeName)
-			fileName := filepath.Join(outputDir, fmt.Sprintf("%s.clone_gen.go", strings.ToLower(baseName)))
+			fileName := filepath.Join(outputDirForStruct, fmt.Sprintf("%s.clone_gen.go", strings.ToLower(baseName)))
 
 			if writeErr := os.WriteFile(fileName, []byte(code), 0644); writeErr != nil {
 				return fmt.Errorf("write %s: %w", fileName, writeErr)
@@ -143,7 +146,7 @@ func run(cfg *types.GeneratorConfig) error {
 			if testErr != nil {
 				_, _ = fmt.Fprintf(os.Stderr, "  ⚠ generate test for %s: %v\n", typeName, testErr)
 			} else {
-				testFileName := filepath.Join(outputDir, fmt.Sprintf("%s.clone_gen_test.go", strings.ToLower(baseName)))
+				testFileName := filepath.Join(outputDirForStruct, fmt.Sprintf("%s.clone_gen_test.go", strings.ToLower(baseName)))
 				if writeErr := os.WriteFile(testFileName, []byte(testCode), 0644); writeErr != nil {
 					return fmt.Errorf("write %s: %w", testFileName, writeErr)
 				}
@@ -152,11 +155,34 @@ func run(cfg *types.GeneratorConfig) error {
 		}
 
 		_, _ = fmt.Fprintf(os.Stdout,
-			"\nGenerated %d Clone() implementation(s) + test file(s) in %s\n",
-			len(sortedKeys), outputDir)
+			"\nGenerated %d Clone() implementation(s) + test file(s)\n",
+			len(sortedKeys))
 	}
 
 	return nil
+}
+
+// determineOutputDirectory selects the correct output directory for a generated Clone() file.
+//
+// Rules:
+//   - If cfg.Output is non-empty: always use cfg.Output (user explicitly requested single dir).
+//   - If typeName contains "." (cross-package, e.g., "auth.Role"): use filepath.Dir(info.File).
+//   - Otherwise (initial package type): use targetDir.
+//
+// This ensures generated files are colocated with their source definitions by default,
+// while preserving backward compatibility when --output is explicitly set. (◕‿◕)
+func determineOutputDirectory(cfg *types.GeneratorConfig, typeName string, info *types.StructInfo, targetDir string) string {
+	if cfg.Output != "" {
+		// User explicitly requested all files in one directory — respect that choice.
+		return cfg.Output
+	}
+	if strings.Contains(typeName, ".") && info.File != "" {
+		// Cross-package internal type: write to the directory where the struct is defined.
+		// info.File contains the absolute path to the source file, so filepath.Dir gives us the package dir.
+		return filepath.Dir(info.File)
+	}
+	// Initial package type or fallback: use the target directory.
+	return targetDir
 }
 
 // plainTypeName strips the "pkg." prefix from a cross-package qualified key

@@ -2,7 +2,7 @@
 // All struct types in this file should be skipped.
 //
 // doppel:skip-all
-package testdata
+package basic
 
 // SkippedInFile should be skipped because the file has doppel:skip-all.
 type SkippedInFile struct {

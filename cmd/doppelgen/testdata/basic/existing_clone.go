@@ -1,5 +1,5 @@
 // Package testdata provides fixture types for doppelgen parser and emitter tests.
-package testdata
+package basic
 
 // ExistingClone is a struct that already defines its own Clone() method.
 // The generator should detect this and skip generation.

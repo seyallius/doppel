@@ -1,5 +1,5 @@
 // Package testdata — unexported struct fixture.
-package testdata
+package basic
 
 // unexportedStruct is not exported and its fields should not appear in generation.
 type unexportedStruct struct {

@@ -1,5 +1,5 @@
 // Package testdata provides fixture types for doppelgen parser and emitter tests.
-package testdata
+package basic
 
 // BasicUser is a struct with a mix of primitive, slice, map, skip, shallow, and empty fields.
 type BasicUser struct {

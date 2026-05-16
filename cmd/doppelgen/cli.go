@@ -14,16 +14,18 @@ import (
 // -------------------------------------------- Public API --------------------------------------------
 
 // newRootCmd creates and returns the root cobra command for doppelgen.
-// It registers flags for type filtering, package targeting, output directory, preview mode, and custom tag keys.
+// It registers flags for type filtering, package targeting, output directory, preview mode,
+// custom tag keys, and an optional module-root override for cross-package resolution.
 // If type names are provided, they are validated against Go identifier rules.
 // Returns an error during execution if any type name is invalid.
 func newRootCmd() *cobra.Command {
 	var (
-		typeNames string
-		pkg       string
-		output    string
-		preview   bool
-		tag       string
+		typeNames  string
+		pkg        string
+		output     string
+		preview    bool
+		tag        string
+		moduleRoot string
 	)
 
 	cmd := &cobra.Command{
@@ -31,13 +33,21 @@ func newRootCmd() *cobra.Command {
 		Short: "Generate Clone() method implementations from doppel struct tags",
 		Long: `doppelgen is a code generator that reads Go source files with doppel struct tags
 and emits Clone() method implementations. It analyses struct fields, resolves type
-dependencies, and produces idiomatic Go code with proper deep/shallow/empty/skip semantics.`,
+dependencies across packages, and produces idiomatic Go code with proper
+deep/shallow/empty/skip semantics.
+
+Cross-package support:
+  - Project-internal types (under the same Go module) are parsed recursively,
+    and Clone() implementations are generated for their structs automatically.
+  - Third-party types (from external modules) receive convention-function stubs
+    with //todo comments indicating the expected function signature.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := &types.GeneratorConfig{
-				Output:  output,
-				Preview: preview,
-				Tag:     tag,
-				Package: pkg,
+				Output:     output,
+				Preview:    preview,
+				Tag:        tag,
+				Package:    pkg,
+				ModuleRoot: moduleRoot,
 			}
 
 			if typeNames != "" {
@@ -60,6 +70,9 @@ dependencies, and produces idiomatic Go code with proper deep/shallow/empty/skip
 	cmd.Flags().StringVar(&output, "output", "", "Output directory for generated files (default: package directory)")
 	cmd.Flags().BoolVar(&preview, "preview", false, "Print generated code to stdout without writing files")
 	cmd.Flags().StringVar(&tag, "tag", "doppel", "Struct tag key to look for")
+	cmd.Flags().StringVar(&moduleRoot, "module-root", "",
+		"Override the Go module root directory. Defaults to auto-detection by walking up from --package until go.mod is found.\n"+
+			"Use this when go.mod is not in a parent of --package, or when running in unusual project layouts.")
 
 	return cmd
 }

@@ -1,4 +1,4 @@
-package object
+package auth
 
 type Role struct {
 	Owner       string

@@ -1,4 +1,4 @@
-package object
+package auth
 
 type MfaProps struct {
 	Enabled            bool
@@ -14,4 +14,11 @@ type MfaProps struct {
 type MfaItem struct {
 	Name string
 	Rule string
+}
+
+type MfaAccount struct {
+	AccountName string
+	Issuer      string
+	SecretKey   string
+	Origin      string
 }

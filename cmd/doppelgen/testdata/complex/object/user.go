@@ -1,6 +1,10 @@
 package object
 
-import "github.com/go-webauthn/webauthn/webauthn"
+import (
+	"complex/object/auth"
+
+	"github.com/go-webauthn/webauthn/webauthn"
+)
 
 type User struct {
 	Owner                string
@@ -169,7 +173,7 @@ type User struct {
 	MfaPushEnabled      bool
 	MfaPushReceiver     string
 	MfaPushProvider     string
-	MultiFactorAuths    []*MfaProps
+	MultiFactorAuths    []*auth.MfaProps
 	Invitation          string
 	InvitationCode      string
 	FaceIds             []*FaceId
@@ -178,8 +182,8 @@ type User struct {
 	Ldap       string
 	Properties map[string]string
 
-	Roles       []*Role
-	Permissions []*Permission
+	Roles       []*auth.Role
+	Permissions []*auth.Permission
 	Groups      []string
 
 	LastChangePasswordTime string
@@ -187,8 +191,8 @@ type User struct {
 	SigninWrongTimes       int
 
 	ManagedAccounts     []ManagedAccount
-	MfaAccounts         []MfaAccount
-	MfaItems            []*MfaItem
+	MfaAccounts         []auth.MfaAccount
+	MfaItems            []*auth.MfaItem
 	MfaRememberDeadline string
 	NeedUpdatePassword  bool
 	ApplicationScopes   []ConsentRecord
@@ -224,7 +228,7 @@ type User struct {
 	IsRegistering       bool
 	CompletedSmartLogin bool
 
-	PasswordHistory    *PasswordHistory
+	PasswordHistory    *auth.PasswordHistory
 	NeedsResetPassword bool
 	DisableMfa         bool
 	EkycProperties     *EkycProperties
@@ -258,13 +262,6 @@ type ManagedAccount struct {
 	Username    string
 	Password    string
 	SigninUrl   string
-}
-
-type MfaAccount struct {
-	AccountName string
-	Issuer      string
-	SecretKey   string
-	Origin      string
 }
 
 type Address struct {

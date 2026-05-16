@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/seyallius/doppel/cmd/doppelgen/internal/types"
-	"github.com/seyallius/doppel/core"
 	"golang.org/x/tools/imports"
 )
 
@@ -112,26 +111,55 @@ func (e *Emitter) emitImports(info *types.StructInfo) {
 	e.emitRaw(")")
 }
 
-// collectImports scans fields to determine which helper packages are required based on type categories and directives.
+// collectImports scans fields to determine which packages are required.
+// Beyond the original logic it now also:
+//   - Adds the import path for project-internal cross-package field types.
+//   - Skips adding imports for third-party types (convention functions live in
+//     the user's own package, alongside the generated file).
 func (e *Emitter) collectImports(info *types.StructInfo) {
+	needsManual := false
+	needsCore := false
+
 	for _, field := range info.Fields {
-		switch field.Directive {
-		case core.TagDirective{Skip: true}, core.TagDirective{Shallow: true}:
+		// Skip and Shallow fields need no helpers.
+		if field.Directive.Skip || field.Directive.Shallow {
 			continue
+		}
+
+		// Third-party fields use convention functions — no new imports needed here.
+		if field.IsThirdParty ||
+			field.TypeCategory == types.CatThirdPartyStruct ||
+			field.TypeCategory == types.CatThirdPartyPtrStruct {
+			needsCore = true // core.WrapError is still used
+			continue
+		}
+
+		// Internal cross-package field: add the import so generated code compiles.
+		if field.ImportPath != "" {
+			e.addImport(field.ImportPath)
+		}
+		if field.ElemImportPath != "" && !field.ElemIsThirdParty {
+			e.addImport(field.ElemImportPath)
+		}
+		if field.ValueImportPath != "" && !field.ValueIsThirdParty {
+			e.addImport(field.ValueImportPath)
 		}
 
 		switch field.TypeCategory {
 		case types.CatSlice, types.CatMap, types.CatPtrPrimitive, types.CatPtrStruct:
-			e.addImport("github.com/seyallius/doppel/manual")
+			needsManual = true
+		}
+
+		if field.TypeCategory != types.CatPrimitive {
+			needsCore = true
 		}
 	}
 
-	// Always need core for WrapError if there are any non-primitive fields.
-	for _, field := range info.Fields {
-		if field.TypeCategory != types.CatPrimitive {
-			e.addImport("github.com/seyallius/doppel/core")
-			break
-		}
+	if needsManual {
+		e.addImport("github.com/seyallius/doppel/manual")
+	}
+	if needsCore {
+		e.addImport("github.com/seyallius/doppel/core")
 	}
 }
 
@@ -274,6 +302,9 @@ func (e *Emitter) emitCloneTagField(field types.FieldInfo, structName string, va
 // emitDeepField generates deep cloning logic for primitives, slices, maps, pointers, and nested structs.
 func (e *Emitter) emitDeepField(field types.FieldInfo, structName string, varName string) error {
 	switch field.TypeCategory {
+	case types.CatThirdPartyStruct, types.CatThirdPartyPtrStruct:
+		return e.emitThirdPartyField(field, structName, varName)
+
 	case types.CatPrimitive:
 		e.emitLine(fmt.Sprintf("// Field: %s (primitive: %s) — direct assignment.", field.Name, field.Type))
 		e.emitRaw(fmt.Sprintf("%s := x.%s", varName, field.Name))
@@ -298,6 +329,10 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string, varNam
 
 	case types.CatSlice:
 		elemType := field.ElemType
+		if field.ElemIsThirdParty {
+			return e.emitThirdPartySliceElem(field, structName, varName)
+		}
+
 		if isBuiltinPrimitive(elemType) {
 			e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) → manual.CloneSlice with Identity[%s].", field.Name, elemType))
 			e.emitRaw(fmt.Sprintf("%s, err := manual.CloneSlice(x.%s, manual.Identity[%s])", varName, field.Name, elemType))
@@ -330,6 +365,10 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string, varNam
 
 	case types.CatMap:
 		valType := field.ValueType
+		if field.ValueIsThirdParty {
+			return e.emitThirdPartyMapValue(field, structName, varName)
+		}
+
 		if isBuiltinPrimitive(valType) {
 			e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) → manual.CloneMap with Identity[%s].", field.Name, valType))
 			e.emitRaw(fmt.Sprintf("%s, err := manual.CloneMap(x.%s, manual.Identity[%s])", varName, field.Name, valType))

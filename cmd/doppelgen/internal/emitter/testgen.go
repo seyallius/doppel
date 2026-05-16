@@ -15,6 +15,8 @@ import (
 	"golang.org/x/tools/imports"
 )
 
+//fixme(type-alias-testgen): Skip fields that have type alias for map or slice entirely in tests.
+
 // -------------------------------------------- Types --------------------------------------------
 
 // testEmitter holds state for a single test-file generation run.

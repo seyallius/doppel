@@ -8,18 +8,20 @@ import "github.com/seyallius/doppel/core"
 
 // FieldInfo describes a single struct field and its cloning strategy as determined by the doppel tag and Go type analysis.
 type FieldInfo struct {
-	Name           string            // field name (e.g., "Tags")
-	Type           string            // Go type expression (e.g., "[]string", "*Address", "pkgB.Address")
-	Tag            string            // raw tag value (e.g., "deep", "shallow", "-", "")
-	Doc            string            // line comment or doc comment on the field
-	File           string            // source file where the field was declared
-	Directive      core.TagDirective // Resolved directive from parsing the tag.
-	TypeCategory   TypeCategory      // TypeCategory is the resolved category of the field's type. This drives which manual helper (or clone pattern) to emit.
-	ElemType       string            // Element type for slices and maps (e.g., "string" for []string, "pkgB.Score" for []pkgB.Score).
-	KeyType        string            // Key type for maps (e.g., "string" for map[string]int).
-	ValueType      string            // Value type for maps (e.g., "int" for map[string]int).
-	PointedToType  string            // PointedToType is the dereferenced type for pointer fields (e.g., "Address" for *Address, "pkgB.Address" for *pkgB.Address).
-	UnderlyingType string            // The underlier for the alias type (e.g., type MyInt int -> int).
+	Name                  string            // field name (e.g., "Tags")
+	Type                  string            // Go type expression (e.g., "[]string", "*Address", "pkgB.Address")
+	Tag                   string            // raw tag value (e.g., "deep", "shallow", "-", "")
+	Doc                   string            // line comment or doc comment on the field
+	File                  string            // source file where the field was declared
+	Directive             core.TagDirective // Resolved directive from parsing the tag.
+	TypeCategory          TypeCategory      // TypeCategory is the resolved category of the field's type. This drives which manual helper (or clone pattern) to emit.
+	ElemType              string            // Element type for slices and maps (e.g., "string" for []string, "pkgB.Score" for []pkgB.Score).
+	KeyType               string            // Key type for maps (e.g., "string" for map[string]int).
+	ValueType             string            // Value type for maps (e.g., "int" for map[string]int).
+	PointedToType         string            // PointedToType is the dereferenced type for pointer fields (e.g., "Address" for *Address, "pkgB.Address" for *pkgB.Address).
+	UnderlyingType        string            // The underlier for the alias type (e.g., type MyInt int -> int).
+	ElemIsPrimitiveAlias  bool              // True if ElemType is a primitive alias (e.g., type StepStatus string).
+	ValueIsPrimitiveAlias bool              // True if ValueType is a primitive alias.
 
 	// Cross-package / third-party resolution fields.
 	// These are populated when the parser has access to a parser.TypeResolver.

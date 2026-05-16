@@ -114,6 +114,9 @@ func resolveTypeCategoryWithAliases(fi *types.FieldInfo, aliases primitiveAliasM
 	if strings.HasPrefix(t, "[]") {
 		fi.TypeCategory = types.CatSlice
 		fi.ElemType = t[2:]
+		if _, ok := aliases[fi.ElemType]; ok {
+			fi.ElemIsPrimitiveAlias = true
+		}
 		return
 	}
 
@@ -123,6 +126,9 @@ func resolveTypeCategoryWithAliases(fi *types.FieldInfo, aliases primitiveAliasM
 		key, val := parseMapType(t)
 		fi.KeyType = key
 		fi.ValueType = val
+		if _, ok := aliases[val]; ok {
+			fi.ValueIsPrimitiveAlias = true
+		}
 		return
 	}
 

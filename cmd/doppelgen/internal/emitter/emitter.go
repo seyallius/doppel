@@ -336,6 +336,10 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string, varNam
 		case field.TypeCategory == types.CatInterface || elemType == "any" || elemType == "interface{}":
 			return e.emitInterfaceSliceElem(field, structName, varName)
 
+		case isBuiltinPrimitive(elemType) || field.ElemIsPrimitiveAlias:
+			e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) → manual.CloneSlice with Identity[%s].", field.Name, elemType))
+			e.emitRaw(fmt.Sprintf("%s, err := manual.CloneSlice(x.%s, manual.Identity[%s])", varName, field.Name, elemType))
+
 		case isBuiltinPrimitive(elemType):
 			e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) → manual.CloneSlice with Identity[%s].", field.Name, elemType))
 			e.emitRaw(fmt.Sprintf("%s, err := manual.CloneSlice(x.%s, manual.Identity[%s])", varName, field.Name, elemType))
@@ -375,6 +379,10 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string, varNam
 
 		case field.TypeCategory == types.CatInterface || valType == "any" || valType == "interface{}":
 			return e.emitInterfaceMapValue(field, structName, varName)
+
+		case isBuiltinPrimitive(valType) || field.ValueIsPrimitiveAlias:
+			e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) → manual.CloneMap with Identity[%s].", field.Name, valType))
+			e.emitRaw(fmt.Sprintf("%s, err := manual.CloneMap(x.%s, manual.Identity[%s])", varName, field.Name, valType))
 
 		case isBuiltinPrimitive(valType):
 			e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) → manual.CloneMap with Identity[%s].", field.Name, valType))

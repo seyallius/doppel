@@ -329,14 +329,18 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string, varNam
 
 	case types.CatSlice:
 		elemType := field.ElemType
-		if field.ElemIsThirdParty {
+		switch {
+		case field.ElemIsThirdParty:
 			return e.emitThirdPartySliceElem(field, structName, varName)
-		}
 
-		if isBuiltinPrimitive(elemType) {
+		case field.TypeCategory == types.CatInterface || elemType == "any" || elemType == "interface{}":
+			return e.emitInterfaceSliceElem(field, structName, varName)
+
+		case isBuiltinPrimitive(elemType):
 			e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) → manual.CloneSlice with Identity[%s].", field.Name, elemType))
 			e.emitRaw(fmt.Sprintf("%s, err := manual.CloneSlice(x.%s, manual.Identity[%s])", varName, field.Name, elemType))
-		} else {
+
+		default:
 			// Struct element: Clone() returns (*T, error); the closure must return (*T, error).
 			// Dereference the pointer inside the closure, guarding against nil.
 			e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) → manual.CloneSlice with Clone(), dereference pointer result.", field.Name))
@@ -365,14 +369,18 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string, varNam
 
 	case types.CatMap:
 		valType := field.ValueType
-		if field.ValueIsThirdParty {
+		switch {
+		case field.ValueIsThirdParty:
 			return e.emitThirdPartyMapValue(field, structName, varName)
-		}
 
-		if isBuiltinPrimitive(valType) {
+		case field.TypeCategory == types.CatInterface || valType == "any" || valType == "interface{}":
+			return e.emitInterfaceMapValue(field, structName, varName)
+
+		case isBuiltinPrimitive(valType):
 			e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) → manual.CloneMap with Identity[%s].", field.Name, valType))
 			e.emitRaw(fmt.Sprintf("%s, err := manual.CloneMap(x.%s, manual.Identity[%s])", varName, field.Name, valType))
-		} else {
+
+		default:
 			// Struct value: same dereference fix as slice.
 			e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) → manual.CloneMap with Clone(), dereference pointer result.", field.Name))
 			e.emitRaw(fmt.Sprintf("%s, err := manual.CloneMap(x.%s, func(v %s) (%s, error) {", varName, field.Name, valType, valType))
@@ -434,8 +442,7 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string, varNam
 		e.emitRaw("}")
 
 	case types.CatInterface:
-		e.emitLine(fmt.Sprintf("// Field: %s (interface) — direct assignment (no deep copy possible).", field.Name))
-		e.emitRaw(fmt.Sprintf("%s := x.%s", varName, field.Name))
+		return e.emitInterfaceField(field, structName, varName)
 
 	case types.CatUnknown:
 		e.emitLine(fmt.Sprintf("// Field: %s (unknown type: %s) — direct assignment.", field.Name, field.Type))
@@ -445,6 +452,61 @@ func (e *Emitter) emitDeepField(field types.FieldInfo, structName string, varNam
 		e.emitRaw(fmt.Sprintf("%s := x.%s", varName, field.Name))
 	}
 
+	return nil
+}
+
+// emitInterfaceField emits a convention-function call for a field whose type is an interface.
+// Since interface values don't have a universal Clone() method, the user must provide
+// a custom clone function matching the expected signature.
+//
+// Generated code includes:
+//   - A descriptive comment explaining why custom logic is needed.
+//   - A todo comment with the exact function signature to implement.
+//   - A call to the convention-named function (Clone<Struct><Field>).
+//   - Proper error wrapping via core.WrapError.
+func (e *Emitter) emitInterfaceField(field types.FieldInfo, structName, varName string) error {
+	cloneFn := fmt.Sprintf("Clone%s%s", structName, field.Name)
+	e.emitLine(fmt.Sprintf("// Field: %s (interface: %s) — interface values require custom clone logic.", field.Name, field.Type))
+	e.emitLine(fmt.Sprintf("//todo(%s): implement a function with signature:", cloneFn))
+	e.emitLine(fmt.Sprintf("//   func %s(src %s) (%s, error)", cloneFn, field.Type, field.Type))
+	e.emitRaw(fmt.Sprintf("%s, err := %s(x.%s)", varName, cloneFn, field.Name))
+	e.emitRaw("if err != nil {")
+	e.indent++
+	e.emitRaw(fmt.Sprintf("return nil, core.WrapError(%q, err)", structName+"."+field.Name))
+	e.indent--
+	e.emitRaw("}")
+	return nil
+}
+
+// emitInterfaceSliceElem emits a CloneSlice call for a slice whose element type is an interface.
+// The element clone function must be provided by the user since interface{} has no universal Clone().
+func (e *Emitter) emitInterfaceSliceElem(field types.FieldInfo, structName, varName string) error {
+	cloneFn := fmt.Sprintf("Clone%s%sElem", structName, field.Name)
+	e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) — slice of interface type %s.", field.Name, field.ElemType))
+	e.emitLine(fmt.Sprintf("//todo(%s): implement a function with signature:", cloneFn))
+	e.emitLine(fmt.Sprintf("//   func %s(src %s) (%s, error)", cloneFn, field.ElemType, field.ElemType))
+	e.emitRaw(fmt.Sprintf("%s, err := manual.CloneSlice(x.%s, %s)", varName, field.Name, cloneFn))
+	e.emitRaw("if err != nil {")
+	e.indent++
+	e.emitRaw(fmt.Sprintf("return nil, core.WrapError(%q, err)", structName+"."+field.Name))
+	e.indent--
+	e.emitRaw("}")
+	return nil
+}
+
+// emitInterfaceMapValue emits a CloneMap call for a map whose value type is an interface.
+// The value clone function must be provided by the user since interface{} has no universal Clone().
+func (e *Emitter) emitInterfaceMapValue(field types.FieldInfo, structName, varName string) error {
+	cloneFn := fmt.Sprintf("Clone%s%sVal", structName, field.Name)
+	e.emitLine(fmt.Sprintf("// Field: %s (tag: deep) — map with interface value type %s.", field.Name, field.ValueType))
+	e.emitLine(fmt.Sprintf("//todo(%s): implement a function with signature:", cloneFn))
+	e.emitLine(fmt.Sprintf("//   func %s(src %s) (%s, error)", cloneFn, field.ValueType, field.ValueType))
+	e.emitRaw(fmt.Sprintf("%s, err := manual.CloneMap(x.%s, %s)", varName, field.Name, cloneFn))
+	e.emitRaw("if err != nil {")
+	e.indent++
+	e.emitRaw(fmt.Sprintf("return nil, core.WrapError(%q, err)", structName+"."+field.Name))
+	e.indent--
+	e.emitRaw("}")
 	return nil
 }
 

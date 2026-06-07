@@ -13,14 +13,19 @@ import (
 // Compile-time interface check: types.TypeInfo must be usable with parser.FilterStructs.
 var _ types.TypeInfo = nil
 
+// testdataPath returns the absolute path to the basic test fixtures directory.
+// The fixtures were moved into the 'basic' subdirectory to support multiple
+// test scenarios (e.g., complex third-party modules).
 func testdataPath(t *testing.T) string {
 	t.Helper()
+
 	// Walk up from the test's executable directory to find testdata.
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return filepath.Join(wd, "..", "..", "testdata")
+	// Point directly to the 'basic' subdirectory where the .go files live!
+	return filepath.Join(wd, "..", "..", "testdata", "basic")
 }
 
 // -------------------------------------------- Tests --------------------------------------------
@@ -32,8 +37,8 @@ func TestParsePackage(t *testing.T) {
 		t.Fatalf("ParsePackage failed: %v", err)
 	}
 
-	if result.Package != "testdata" {
-		t.Errorf("package = %q, want %q", result.Package, "testdata")
+	if result.Package != "basic" {
+		t.Errorf("package = %q, want %q", result.Package, "basic")
 	}
 
 	if result.FileCount < 1 {

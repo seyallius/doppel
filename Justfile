@@ -169,6 +169,18 @@ diff-cp:
 diff-cp:
     git diff HEAD | /c/Windows/System32/clip.exe
 
+# Copy all logs in graph mode.
+[group('Git')]
+[linux]
+log-cp:
+    git log --graph --all | xclip -selection clipboard
+
+# Copy all logs in graph mode.
+[group('Git')]
+[windows]
+log-cp:
+    git log --graph --all | clip
+
 # Show all (onelined) commit titles made since midnight for daily standup or activity tracking
 [group('Git')]
 today:

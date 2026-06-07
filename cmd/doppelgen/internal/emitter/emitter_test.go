@@ -3,6 +3,8 @@ package emitter_test
 import (
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/seyallius/doppel/cmd/doppelgen/internal/emitter"
@@ -64,7 +66,7 @@ func TestGenerate_BasicUser(t *testing.T) {
 
 	for _, tc := range checks {
 		t.Run(tc.name, func(t *testing.T) {
-			if !containsStr(code, tc.contains) {
+			if !matchesPattern(code, tc.contains) {
 				t.Errorf("generated code missing %q\nFull output:\n%s", tc.contains, code)
 			}
 		})
@@ -104,10 +106,10 @@ func TestGenerate_Address(t *testing.T) {
 		t.Error("missing clonedCity assignment")
 	}
 	// Return must use cloned vars.
-	if !containsStr(code, "Street: clonedStreet,") {
+	if !matchesPattern(code, "Street: clonedStreet,") {
 		t.Error("return missing Street: clonedStreet")
 	}
-	if !containsStr(code, "City: clonedCity,") {
+	if !matchesPattern(code, "City: clonedCity,") {
 		t.Error("return missing City: clonedCity")
 	}
 }
@@ -156,7 +158,7 @@ func TestGenerate_NestedUser(t *testing.T) {
 
 	for _, tc := range checks {
 		t.Run(tc.name, func(t *testing.T) {
-			if !containsStr(code, tc.contains) {
+			if !matchesPattern(code, tc.contains) {
 				t.Errorf("generated code missing %q\nFull output:\n%s", tc.contains, code)
 			}
 		})
@@ -241,17 +243,17 @@ func TestGenerate_PointerPrimitives(t *testing.T) {
 	}
 
 	// Shallow should be direct assignment.
-	if !containsStr(code, "clonedShallow := x.Shallow") {
+	if !matchesPattern(code, "clonedShallow := x.Shallow") {
 		t.Error("missing clonedShallow direct assignment")
 	}
 
 	// Empty pointer-to-primitive is treated as primitive category — direct assignment.
-	if !containsStr(code, "clonedEmptyP := x.EmptyP") {
+	if !matchesPattern(code, "clonedEmptyP := x.EmptyP") {
 		t.Error("missing clonedEmptyP direct assignment (pointer-to-primitive with empty tag)")
 	}
 
 	// Return should map correctly.
-	if !containsStr(code, "Name: clonedName,") {
+	if !matchesPattern(code, "Name: clonedName,") {
 		t.Error("return missing Name: clonedName")
 	}
 }
@@ -345,6 +347,26 @@ func TestGoldenFile_BasicUser(t *testing.T) {
 
 // --- Helpers ---
 
+// matchesPattern checks if the code contains the pattern, allowing any amount of
+// whitespace where the pattern has a single space. This is necessary because
+// gofmt (via imports.Process) aligns struct fields with variable spacing.
+func matchesPattern(code, pattern string) bool {
+	// Split the pattern by spaces, escape each part for regex safety,
+	// and rejoin them with \s+ to allow gofmt's variable alignment spacing.
+	parts := strings.Split(pattern, " ")
+	for i, part := range parts {
+		parts[i] = regexp.QuoteMeta(part)
+	}
+
+	// e.g., "ID: clonedID," becomes "ID:\s+clonedID,"
+	// e.g., "clonedShallow := x.Shallow" becomes "clonedShallow\s+:=\s+x\.Shallow"
+	regexStr := strings.Join(parts, `\s+`)
+
+	matched, _ := regexp.MatchString(regexStr, code)
+	return matched
+}
+
+// containsStr is your original helper (kept for non-struct-alignment checks).
 func containsStr(s, sub string) bool {
 	return len(s) >= len(sub) && (s == sub || len(sub) == 0 ||
 		func() bool {

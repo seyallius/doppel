@@ -2,6 +2,8 @@ package core_test
 
 import (
 	"testing"
+
+	"github.com/seyallius/doppel/core"
 )
 
 func TestParseTagValue(t *testing.T) {
@@ -10,24 +12,24 @@ func TestParseTagValue(t *testing.T) {
 	tests := []struct {
 		name string
 		raw  string
-		want TagValue
+		want core.TagValue
 	}{
-		{"skip", "-", TagSkip},
-		{"shallow", "shallow", TagShallow},
-		{"clone", "clone", TagClone},
-		{"deep", "deep", TagDeep},
-		{"empty", "empty", TagEmpty},
-		{"empty_string", "", TagDeep},
-		{"unknown", "something_else", TagDeep},
-		{"readonly_rejected", "readonly", TagDeep},
-		{"mixed_case_rejected", "Shallow", TagDeep},
+		{"skip", "-", core.TagSkip},
+		{"shallow", "shallow", core.TagShallow},
+		{"clone", "clone", core.TagClone},
+		{"deep", "deep", core.TagDeep},
+		{"empty", "empty", core.TagEmpty},
+		{"empty_string", "", core.TagDeep},
+		{"unknown", "something_else", core.TagDeep},
+		{"readonly_rejected", "readonly", core.TagDeep},
+		{"mixed_case_rejected", "Shallow", core.TagDeep},
 	}
 
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := ParseTagValue(tc.raw)
+			got := core.ParseTagValue(tc.raw)
 			if got != tc.want {
 				t.Errorf("ParseTagValue(%q) = %q, want %q", tc.raw, got, tc.want)
 			}
@@ -41,23 +43,23 @@ func TestParseTag(t *testing.T) {
 	tests := []struct {
 		name string
 		raw  string
-		want TagDirective
+		want core.TagDirective
 	}{
-		{"skip", "-", TagDirective{Skip: true}},
-		{"shallow", "shallow", TagDirective{Shallow: true}},
-		{"clone", "clone", TagDirective{Clone: true}},
-		{"deep", "deep", TagDirective{Deep: true}},
-		{"empty", "empty", TagDirective{Empty: true}},
-		{"default", "", TagDirective{Deep: true}},
-		{"unknown", "foo", TagDirective{Deep: true}},
-		{"readonly_falls_back", "readonly", TagDirective{Deep: true}},
+		{"skip", "-", core.TagDirective{Skip: true}},
+		{"shallow", "shallow", core.TagDirective{Shallow: true}},
+		{"clone", "clone", core.TagDirective{Clone: true}},
+		{"deep", "deep", core.TagDirective{Deep: true}},
+		{"empty", "empty", core.TagDirective{Empty: true}},
+		{"default", "", core.TagDirective{Deep: true}},
+		{"unknown", "foo", core.TagDirective{Deep: true}},
+		{"readonly_falls_back", "readonly", core.TagDirective{Deep: true}},
 	}
 
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := ParseTag(tc.raw)
+			got := core.ParseTag(tc.raw)
 			if got != tc.want {
 				t.Errorf("ParseTag(%q) = %+v, want %+v", tc.raw, got, tc.want)
 			}
@@ -69,25 +71,25 @@ func TestTagValueConstants(t *testing.T) {
 	t.Parallel()
 
 	// Verify constants are not empty strings
-	if TagSkip == "" {
+	if core.TagSkip == "" {
 		t.Error("TagSkip should not be empty")
 	}
-	if TagShallow == "" {
+	if core.TagShallow == "" {
 		t.Error("TagShallow should not be empty")
 	}
-	if TagClone == "" {
+	if core.TagClone == "" {
 		t.Error("TagClone should not be empty")
 	}
-	if TagDeep == "" {
+	if core.TagDeep == "" {
 		t.Error("TagDeep should not be empty")
 	}
-	if TagEmpty == "" {
+	if core.TagEmpty == "" {
 		t.Error("TagEmpty should not be empty")
 	}
 
 	// Verify mutual exclusivity
-	all := []TagValue{TagSkip, TagShallow, TagClone, TagDeep, TagEmpty}
-	seen := make(map[TagValue]bool)
+	all := []core.TagValue{core.TagSkip, core.TagShallow, core.TagClone, core.TagDeep, core.TagEmpty}
+	seen := make(map[core.TagValue]bool)
 	for _, v := range all {
 		if seen[v] {
 			t.Errorf("duplicate TagValue: %q", v)
@@ -97,7 +99,7 @@ func TestTagValueConstants(t *testing.T) {
 
 	// Verify each constant parses to itself
 	for _, v := range all {
-		parsed := ParseTagValue(string(v))
+		parsed := core.ParseTagValue(string(v))
 		if parsed != v {
 			t.Errorf("ParseTagValue(%q) = %q, want %q", string(v), parsed, v)
 		}
@@ -105,7 +107,7 @@ func TestTagValueConstants(t *testing.T) {
 }
 
 func TestTagKey(t *testing.T) {
-	if TagKey != "doppel" {
-		t.Errorf("TagKey = %q, want %q", TagKey, "doppel")
+	if core.TagKey != "doppel" {
+		t.Errorf("TagKey = %q, want %q", core.TagKey, "doppel")
 	}
 }

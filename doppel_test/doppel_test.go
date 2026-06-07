@@ -8,6 +8,7 @@ import (
 
 	"github.com/seyallius/doppel"
 	"github.com/seyallius/doppel/core"
+	"github.com/stretchr/testify/require"
 )
 
 // --- TestClone_User — nested struct with pointer, slice, and map fields --------------------
@@ -17,7 +18,7 @@ func TestClone_User(t *testing.T) {
 
 	original := newUser()
 	cloned, err := doppel.Clone(original)
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	if !reflect.DeepEqual(cloned, original) {
 		t.Fatalf("clone not equal to original:\ngot  %+v\nwant %+v", cloned, original)
@@ -86,7 +87,7 @@ func TestClone_User_Pointer_Independence(t *testing.T) {
 
 			original := newUser()
 			cloned, err := doppel.Clone(original)
-			requireNoError(t, err)
+			require.NoError(t, err)
 
 			tc.mutate(original)
 			tc.check(t, cloned)
@@ -147,7 +148,7 @@ func TestClone_User_NilFields(t *testing.T) {
 			t.Parallel()
 
 			cloned, err := doppel.Clone(tc.original)
-			requireNoError(t, err)
+			require.NoError(t, err)
 
 			if !reflect.DeepEqual(cloned, tc.original) {
 				t.Fatalf("clone mismatch:\ngot  %+v\nwant %+v", cloned, tc.original)
@@ -163,7 +164,7 @@ func TestClone_Order(t *testing.T) {
 
 	original := newOrder(newUser())
 	cloned, err := doppel.Clone(original)
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	if !reflect.DeepEqual(cloned, original) {
 		t.Fatalf("Order clone mismatch")
@@ -223,7 +224,7 @@ func TestClone_Order_Independence(t *testing.T) {
 
 			original := newOrder(newUser())
 			cloned, err := doppel.Clone(original)
-			requireNoError(t, err)
+			require.NoError(t, err)
 
 			tc.mutate(original)
 			tc.check(t, cloned)
@@ -271,7 +272,7 @@ func TestFuncCloner(t *testing.T) {
 	})
 
 	got, err := cloner.Clone(7)
-	requireNoError(t, err)
+	require.NoError(t, err)
 
 	if got != 70 {
 		t.Errorf("FuncCloner result: got %d, want 70", got)

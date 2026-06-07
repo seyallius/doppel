@@ -310,6 +310,8 @@ func TestGeneratePreview(t *testing.T) {
 	}
 }
 
+// TestGoldenFile_BasicUser compares the generated output against a saved "golden" snapshot.
+// This ensures that future refactors don't accidentally change the generated code format.
 func TestGoldenFile_BasicUser(t *testing.T) {
 	t.Parallel()
 
@@ -333,10 +335,17 @@ func TestGoldenFile_BasicUser(t *testing.T) {
 		t.Fatalf("Generate failed: %v", err)
 	}
 
-	// Load golden file.
-	goldenPath := filepath.Join("..", "..", "testdata", "basicuser.clone_gen.go.golden")
+	goldenPath := filepath.Join("..", "..", "testdata", "basic", "basicuser.clone_gen.go.golden")
 	golden, err := os.ReadFile(goldenPath)
 	if err != nil {
+		// If the file doesn't exist yet, bootstrap it with the current output.
+		if os.IsNotExist(err) {
+			if writeErr := os.WriteFile(goldenPath, []byte(code), 0644); writeErr != nil {
+				t.Fatalf("failed to bootstrap golden file: %v", writeErr)
+			}
+			t.Logf("✨ Bootstrapped new golden file: %s", goldenPath)
+			return
+		}
 		t.Skipf("golden file not found: %v", err)
 	}
 

@@ -159,8 +159,15 @@ rebase n="3":
 
 # Copy the current unstaged/staged diff to the system clipboard for sharing or documentation
 [group('Git')]
+[linux]
 diff-cp:
     git diff | xclip -selection clipboard
+
+# Copy current diff to clipboard.
+[group('Git')]
+[windows]
+diff-cp:
+    git diff HEAD | /c/Windows/System32/clip.exe
 
 # Show all (onelined) commit titles made since midnight for daily standup or activity tracking
 [group('Git')]

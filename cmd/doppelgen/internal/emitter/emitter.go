@@ -575,7 +575,7 @@ func isBuiltinPrimitive(t string) bool {
 // For pointer types (*T), returns &T{}. For value types (T), returns T{}.
 func emptyLiteralForType(typeExpr string) string {
 	if len(typeExpr) > 0 && typeExpr[0] == '*' {
-		return "&" + typeExpr[1:] + "{}" // Pointer type: *Address → &Address{}
+		return "new(" + typeExpr[1:] + ")" // Pointer type: *Address → new(Address) (equivalent to &Address{})
 	}
 	return typeExpr + "{}" // Value type: Address → Address{}
 }

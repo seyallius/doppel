@@ -42,6 +42,18 @@ func main() {
 // transitively, and flags third-party types for convention-function stubs.
 // If module detection fails gracefully, single-package mode is used transparently.
 func run(cfg *types.GeneratorConfig) error {
+	// ── Step 0: Validate configuration ────────────────────────────────────
+	// Defensive programming: run() must validate its own inputs, regardless
+	// of whether it's called by the CLI or as a library function.
+	if len(cfg.Packages) > 1 && cfg.Output != "" {
+		return fmt.Errorf("--output cannot be used with multiple --package flags; files will be generated inline next to their source definitions")
+	}
+
+	// Default to current directory if no packages specified
+	if len(cfg.Packages) == 0 {
+		cfg.Packages = []string{"."}
+	}
+
 	// ── Step 1: Resolve absolute paths for all target directories ─────────
 	var absPackages []string
 	for _, pkg := range cfg.Packages {

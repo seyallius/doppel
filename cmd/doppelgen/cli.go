@@ -51,16 +51,7 @@ Cross-package support:
 				ModuleRoot: moduleRoot,
 			}
 
-			// Default to current directory if no packages specified
-			if len(cfg.Packages) == 0 {
-				cfg.Packages = []string{"."}
-			}
-
-			// Validation: multi-package runs cannot use a global --output directory
-			if len(cfg.Packages) > 1 && cfg.Output != "" {
-				return fmt.Errorf("--output cannot be used with multiple --package flags; files will be generated inline next to their source definitions")
-			}
-
+			// Validate type names (CLI-specific syntax check)
 			if typeNames != "" {
 				cfg.TypeNames = splitComma(typeNames)
 				// Validate that type names are valid identifiers.

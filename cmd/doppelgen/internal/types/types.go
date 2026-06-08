@@ -72,8 +72,8 @@ type ImportSpec struct {
 // GeneratorConfig holds the CLI configuration for a single generation run.
 type GeneratorConfig struct {
 	TypeNames  []string // specific types to generate (empty = all tagged structs)
-	Package    string   // target package name
-	Output     string   // output directory
+	Packages   []string // target package directories (supports multiple)
+	Output     string   // output directory (locked/empty when len(Packages) > 1)
 	Preview    bool     // print to stdout without writing files
 	Tag        string   // tag key (default: "doppel")
 	ModuleRoot string   // optional override for Go module root auto-detection

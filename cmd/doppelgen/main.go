@@ -42,69 +42,77 @@ func main() {
 // transitively, and flags third-party types for convention-function stubs.
 // If module detection fails gracefully, single-package mode is used transparently.
 func run(cfg *types.GeneratorConfig) error {
-	// ── Step 1: Resolve target directory ─────────────────────────────────
-	targetDir := cfg.Package
-	if targetDir == "" {
-		targetDir = "."
+	// ── Step 1: Resolve absolute paths for all target directories ─────────
+	var absPackages []string
+	for _, pkg := range cfg.Packages {
+		absDir, err := filepath.Abs(pkg)
+		if err != nil {
+			return fmt.Errorf("resolve target directory %q: %w", pkg, err)
+		}
+		absPackages = append(absPackages, absDir)
 	}
 
-	var err error
-	targetDir, err = filepath.Abs(targetDir)
-	if err != nil {
-		return fmt.Errorf("resolve target directory: %w", err)
+	// Detect module root from the first package to share across all parses (optimization)
+	moduleRoot := cfg.ModuleRoot
+	if moduleRoot == "" && len(absPackages) > 0 {
+		if detectedRoot, err := parser.FindModuleRoot(absPackages[0]); err == nil {
+			moduleRoot = detectedRoot
+		}
 	}
 
-	// ── Step 2: Parse project (recursive, cross-package aware) ───────────
-	projectResult, err := parser.ParseProject(targetDir, cfg.Tag, cfg.ModuleRoot)
-	if err != nil {
-		return fmt.Errorf("parse project: %w", err)
+	// ── Step 2: Parse all packages and merge results ──────────────────────
+	mergedStructs := make(types.TypeInfo)
+	var allSkipped []parser.SkipInfo
+
+	for _, absDir := range absPackages {
+		projectResult, err := parser.ParseProject(absDir, cfg.Tag, moduleRoot)
+		if err != nil {
+			return fmt.Errorf("parse project at %q: %w", absDir, err)
+		}
+		for key, info := range projectResult.Structs {
+			mergedStructs[key] = info
+		}
+		allSkipped = append(allSkipped, projectResult.Skipped...)
 	}
 
-	// Derive a flat ParseResult for compat with FilterStructs / ResolveDependencies.
-	// We use projectResult.Structs (merged across all packages) and
-	// projectResult.TopologicalOrder (cross-package topo sort).
-	if len(projectResult.Structs) == 0 {
-		return fmt.Errorf("no Go files found in %q", targetDir)
+	if len(mergedStructs) == 0 {
+		return fmt.Errorf("no Go files found in provided packages")
 	}
 
-	// ── Step 3: Filter to requested types ────────────────────────────────
-	filtered := parser.FilterStructs(projectResult.Structs, cfg.TypeNames)
+	// ── Step 3: Filter to requested types ─────────────────────────────────
+	filtered := parser.FilterStructs(mergedStructs, cfg.TypeNames)
 	if len(filtered) == 0 {
 		return fmt.Errorf(
-			"no structs eligible for generation in %q (found %d structs, %d skipped)",
-			targetDir, len(projectResult.Structs), len(projectResult.Skipped),
+			"no structs eligible for generation (found %d structs, %d skipped)",
+			len(mergedStructs), len(allSkipped),
 		)
 	}
 
 	// ── Step 4: Report skipped types in preview mode ──────────────────────
-	if len(projectResult.Skipped) > 0 && cfg.Preview {
+	if len(allSkipped) > 0 && cfg.Preview {
 		_, _ = fmt.Fprintf(os.Stderr, "// Skipped types:\n")
-		for _, s := range projectResult.Skipped {
+		for _, s := range allSkipped {
 			_, _ = fmt.Fprintf(os.Stderr, "//   %s: %s (%s)\n", s.TypeName, s.Reason, s.File)
 		}
 		_, _ = fmt.Fprintf(os.Stderr, "\n")
 	}
 
-	// ── Step 5: Use pre-computed topological order (cross-package aware) ──
-	// Filter the topo order to only include types in the filtered set.
-	var sortedKeys []string
-	for _, key := range projectResult.TopologicalOrder {
-		if _, ok := filtered[key]; ok {
-			sortedKeys = append(sortedKeys, key)
-		}
+	// ── Step 5: Unified topological sort across all packages ──────────────
+	sortedKeys, err := parser.ResolveDependencies(filtered)
+	if err != nil {
+		return fmt.Errorf("resolve cross-package dependencies: %w", err)
 	}
 
 	// ── Step 6: Generate Clone() methods ──────────────────────────────────
 	for _, typeName := range sortedKeys {
 		info := filtered[typeName]
-
 		code, genErr := emitter.Generate(info)
 		if genErr != nil {
 			return fmt.Errorf("generate %s: %w", typeName, genErr)
 		}
 
 		if cfg.Preview {
-			_, _ = fmt.Fprintf(os.Stdout, "// --- %s.clone_gen.go ---\n", strings.ToLower(typeName))
+			_, _ = fmt.Fprintf(os.Stdout, "// --- %s.clone_gen.go ---\n", strings.ToLower(plainTypeName(typeName)))
 			_, _ = fmt.Fprintln(os.Stdout, code)
 			_, _ = fmt.Fprintln(os.Stdout)
 		}
@@ -112,22 +120,14 @@ func run(cfg *types.GeneratorConfig) error {
 
 	// ── Step 7: Write files (non-preview mode) ────────────────────────────
 	if !cfg.Preview {
-		// Create default output dir only if explicitly requested via --output.
-		if cfg.Output != "" {
-			if mkErr := os.MkdirAll(cfg.Output, 0755); mkErr != nil {
-				return fmt.Errorf("create output directory: %w", mkErr)
-			}
-		}
-
 		for _, typeName := range sortedKeys {
 			info := filtered[typeName]
-
 			code, genErr := emitter.Generate(info)
 			if genErr != nil {
 				return fmt.Errorf("generate %s: %w", typeName, genErr)
 			}
 
-			outputDirForStruct := determineOutputDirectory(cfg, typeName, info, targetDir)
+			outputDirForStruct := determineOutputDirectory(cfg, info)
 			if mkErr := os.MkdirAll(outputDirForStruct, 0755); mkErr != nil {
 				return fmt.Errorf("create output directory for %s: %w", typeName, mkErr)
 			}
@@ -166,23 +166,20 @@ func run(cfg *types.GeneratorConfig) error {
 //
 // Rules:
 //   - If cfg.Output is non-empty: always use cfg.Output (user explicitly requested single dir).
-//   - If typeName contains "." (cross-package, e.g., "auth.Role"): use filepath.Dir(info.File).
-//   - Otherwise (initial package type): use targetDir.
+//   - Otherwise: use the directory of the source file (filepath.Dir(info.File)).
 //
 // This ensures generated files are colocated with their source definitions by default,
-// while preserving backward compatibility when --output is explicitly set. (◕‿◕)
-func determineOutputDirectory(cfg *types.GeneratorConfig, typeName string, info *types.StructInfo, targetDir string) string {
+// inherently supporting multi-package generation while preserving backward compatibility.
+func determineOutputDirectory(cfg *types.GeneratorConfig, info *types.StructInfo) string {
 	if cfg.Output != "" {
 		// User explicitly requested all files in one directory — respect that choice.
 		return cfg.Output
 	}
-	if strings.Contains(typeName, ".") && info.File != "" {
-		// Cross-package internal type: write to the directory where the struct is defined.
-		// info.File contains the absolute path to the source file, so filepath.Dir gives us the package dir.
+	if info.File != "" {
 		return filepath.Dir(info.File)
 	}
-	// Initial package type or fallback: use the target directory.
-	return targetDir
+	// Fallback (should rarely happen if parser populates info.File correctly)
+	return "."
 }
 
 // plainTypeName strips the "pkg." prefix from a cross-package qualified key

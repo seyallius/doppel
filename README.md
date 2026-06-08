@@ -119,13 +119,13 @@ A runnable example is present in [main.go](./cmd/doppelgen/main.go). It generate
 If you want full control, install `doppelgen` locally (see [doppelgen installation](#installation)) and run the CLI yourself.
 ### Flags
 
-| Flag        | Description                              |
-|-------------|------------------------------------------|
-| `--type`    | Comma-separated struct names             |
-| `--package` | Target package directory (default: same) |
-| `--output`  | Output directory                         |
-| `--tag`     | Custom struct tag name (default: doppel) |
-| `--preview` | Print generated code to stdout           |
+| Flag        | Description                                                                  |
+|-------------|------------------------------------------------------------------------------|
+| `--type`    | Comma-separated struct names                                                 |
+| `--package` | Target package directory (can be specified multiple times for multi-package) |
+| `--output`  | Output directory (locked/disallowed when using multiple `--package` flags)   |
+| `--tag`     | Custom struct tag name (default: doppel)                                     |
+| `--preview` | Print generated code to stdout                                               |
 
 ---
 

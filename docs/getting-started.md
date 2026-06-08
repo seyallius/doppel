@@ -113,11 +113,12 @@ go install github.com/seyallius/doppel/cmd/doppelgen@latest
 ### Usage
 
 ```bash
-# Generate Clone() for specific types
+# Generate Clone() for specific types in a single package
 doppelgen --type=User,Order --package=./models
 
-# Generate for all tagged structs in a package
-doppelgen --package=./models --output=./generated
+# Generate for all tagged structs across multiple packages
+# Note: Files will be generated inline next to their source definitions
+doppelgen --package=./models --package=./api/types
 
 # Preview generated code without writing files
 doppelgen --type=User --preview
@@ -172,13 +173,13 @@ go test ./...
 
 ### CLI Flags
 
-| Flag       | Description                                          | Default                |
-|------------|------------------------------------------------------|------------------------|
-| `-type`    | Comma-separated list of type names to generate       | *(all tagged structs)* |
-| `-package` | Target package directory                             | `.`                    |
-| `-output`  | Output directory for generated files                 | *(package directory)*  |
-| `-preview` | Print generated code to stdout without writing files | `false`                |
-| `-tag`     | Struct tag key to look for                           | `"doppel"`             |
+| Flag            | Description                                                                   | Default                |
+|-----------------|-------------------------------------------------------------------------------|------------------------|
+| `-t, --type`    | Comma-separated list of type names to generate                                | *(all tagged structs)* |
+| `-p, --package` | Target package directory (can be specified multiple times for multi-package)  | `.`                    |
+| `-o, --output`  | Output directory for generated files (locked when using multiple `--package`) | *(package directory)*  |
+| `--preview`     | Print generated code to stdout without writing files                          | `false`                |
+| `--tag`         | Struct tag key to look for                                                    | `"doppel"`             |
 
 ### Skip generation
 

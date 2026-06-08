@@ -21,7 +21,7 @@ import (
 func newRootCmd() *cobra.Command {
 	var (
 		typeNames  string
-		pkg        string
+		packages   []string
 		output     string
 		preview    bool
 		tag        string
@@ -40,14 +40,25 @@ Cross-package support:
   - Project-internal types (under the same Go module) are parsed recursively,
     and Clone() implementations are generated for their structs automatically.
   - Third-party types (from external modules) receive convention-function stubs
-    with //todo comments indicating the expected function signature.`,
+    with //todo comments indicating the expected function signature.
+  - Multiple packages can be specified using multiple --package flags.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := &types.GeneratorConfig{
 				Output:     output,
 				Preview:    preview,
 				Tag:        tag,
-				Package:    pkg,
+				Packages:   packages,
 				ModuleRoot: moduleRoot,
+			}
+
+			// Default to current directory if no packages specified
+			if len(cfg.Packages) == 0 {
+				cfg.Packages = []string{"."}
+			}
+
+			// Validation: multi-package runs cannot use a global --output directory
+			if len(cfg.Packages) > 1 && cfg.Output != "" {
+				return fmt.Errorf("--output cannot be used with multiple --package flags; files will be generated inline next to their source definitions")
 			}
 
 			if typeNames != "" {
@@ -65,9 +76,9 @@ Cross-package support:
 	}
 
 	// Register flags — matching the original flagSet interface.
-	cmd.Flags().StringVar(&typeNames, "type", "", "Comma-separated list of type names to generate (default: all tagged structs)")
-	cmd.Flags().StringVar(&pkg, "package", "", "Target package directory (default: current directory)")
-	cmd.Flags().StringVar(&output, "output", "", "Output directory for generated files (default: package directory)")
+	cmd.Flags().StringVarP(&typeNames, "type", "t", "", "Comma-separated list of type names to generate (default: all tagged structs)")
+	cmd.Flags().StringArrayVarP(&packages, "package", "p", nil, "Target package directory (can be specified multiple times)")
+	cmd.Flags().StringVarP(&output, "output", "o", "", "Output directory for generated files (default: package directory, locked for multi-package)")
 	cmd.Flags().BoolVar(&preview, "preview", false, "Print generated code to stdout without writing files")
 	cmd.Flags().StringVar(&tag, "tag", "doppel", "Struct tag key to look for")
 	cmd.Flags().StringVar(&moduleRoot, "module-root", "",
